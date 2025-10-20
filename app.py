@@ -74,6 +74,20 @@ def normalize_coordinate(value):
     except (ValueError, TypeError):
         return None
 
+def correct_paris_longitude(lat, lon, address):
+    """
+    Corrige automatiquement les longitudes incorrectes pour Paris
+    Retourne la longitude corrigée
+    """
+    # Vérifier si c'est une adresse parisienne avec longitude suspecte
+    if lat and lon:
+        if ("paris" in str(address).lower() or "75" in str(address)) and (0 < lon < 1):
+            # Probable perte du chiffre '2' au début
+            corrected_lon = lon + 2
+            if FRANCE_LON_MIN <= corrected_lon <= FRANCE_LON_MAX:
+                return corrected_lon
+    return lon
+
 def validate_france_coordinates(lat, lon, address=""):
     """
     Valide les coordonnées pour la France avec détection d'anomalies
@@ -184,7 +198,7 @@ def connect_to_google_sheet():
         return None
 
 def get_all_addresses(sheet):
-    """Récupère toutes les adresses depuis le Google Sheet"""
+    """Récupère toutes les adresses depuis le Google Sheet avec correction automatique"""
     try:
         data = sheet.get_all_records()
         if data:
@@ -193,10 +207,17 @@ def get_all_addresses(sheet):
                 if 'Note' not in df.columns:
                     df['Note'] = ''
                 
+                # Normaliser les coordonnées
                 df['Latitude'] = df['Latitude'].apply(normalize_coordinate)
                 df['Longitude'] = df['Longitude'].apply(normalize_coordinate)
                 df = df.dropna(subset=['Latitude', 'Longitude'])
                 df['Note'] = df['Note'].fillna('')
+                
+                # NOUVEAU: Corriger automatiquement les longitudes parisiennes
+                df['Longitude'] = df.apply(
+                    lambda row: correct_paris_longitude(row['Latitude'], row['Longitude'], row['Adresse']),
+                    axis=1
+                )
                 
                 return df
         return pd.DataFrame(columns=['Adresse', 'Latitude', 'Longitude', 'Note'])
@@ -382,25 +403,11 @@ def display_map(df):
     
     if france_coords.empty:
         st.warning("⚠️ Aucune coordonnée valide en France métropolitaine.")
-        st.info("💡 Certaines coordonnées peuvent être incorrectes (longitude trop faible).")
+        st.info("💡 Les coordonnées sont automatiquement corrigées à l'affichage.")
         
         with st.expander("🔍 Diagnostic des coordonnées"):
             diag_df = df[['Adresse', 'Latitude', 'Longitude', 'Note']].copy()
-            
-            # Ajouter une colonne de diagnostic
-            def diagnose_coords(row):
-                lat, lon = row['Latitude'], row['Longitude']
-                if not (FRANCE_LAT_MIN <= lat <= FRANCE_LAT_MAX):
-                    return f"❌ Lat hors France: {lat:.6f}"
-                if not (FRANCE_LON_MIN <= lon <= FRANCE_LON_MAX):
-                    if 0 < lon < 1 and ("paris" in str(row['Adresse']).lower() or "75" in str(row['Adresse'])):
-                        return f"⚠️ Lon incorrecte: {lon:.6f} (devrait être ~{lon+2:.6f})"
-                    return f"❌ Lon hors France: {lon:.6f}"
-                return "✅ OK"
-            
-            diag_df['Diagnostic'] = df.apply(diagnose_coords, axis=1)
             st.dataframe(diag_df, use_container_width=True)
-            st.caption("💡 Les coordonnées avec ⚠️ nécessitent une correction manuelle dans Google Sheets")
         
         m = create_empty_france_map()
         st_folium(m, width=1400, height=600, returned_objects=[])
@@ -561,7 +568,7 @@ def main():
             if len(valid_coords) < len(df):
                 st.warning(f"⚠️ {len(df) - len(valid_coords)} adresse(s) hors France (coordonnées invalides)")
             
-            st.info("💡 **Cliquez sur un marqueur** pour voir les détails et accéder à Street View")
+            st.info("💡 **Cliquez sur un marqueur** pour voir les détails et accéder à Street View. Les coordonnées sont automatiquement corrigées à l'affichage.")
             
             display_map(df)
             
