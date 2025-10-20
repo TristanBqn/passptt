@@ -75,14 +75,28 @@ def geocode_address_france(address):
                 full_address = feature['properties'].get('label', address)
                 score = feature['properties'].get('score', 0)
                 
+                lat = coords[1]
+                lon = coords[0]
+                
+                # VALIDATION STRICTE : Vérifier que c'est en France métropolitaine
+                if not (41 <= lat <= 51.5 and -5.5 <= lon <= 10):
+                    st.error("❌ Cette adresse ne semble pas être en France métropolitaine.")
+                    st.info(f"Coordonnées trouvées : Lat {lat:.4f}, Lon {lon:.4f}")
+                    return None, None
+                
                 # Vérifier la qualité du résultat
-                if score >= 0.5:  # Score de confiance minimum
-                    st.success(f"✅ Adresse trouvée : {full_address} (score: {score:.2f})")
-                    return coords[1], coords[0]  # Retourner latitude, longitude
+                if score >= 0.4:  # Score de confiance minimum
+                    st.success(f"✅ Adresse trouvée : {full_address} (confiance: {score:.2f})")
+                    return lat, lon
                 else:
                     st.warning(f"⚠️ Adresse trouvée avec un faible score de confiance ({score:.2f})")
                     st.info(f"Adresse suggérée : {full_address}")
-                    return coords[1], coords[0]
+                    # Permettre quand même si les coordonnées sont en France
+                    if score >= 0.3:
+                        return lat, lon
+                    else:
+                        st.error("Score trop faible, adresse rejetée.")
+                        return None, None
                     
     except Exception as e:
         st.error(f"❌ Erreur API Adresse : {str(e)}")
@@ -93,7 +107,8 @@ def geocode_address_france(address):
         params = {
             'q': address,
             'limit': 1,
-            'lang': 'fr'
+            'lang': 'fr',
+            'location_bias_scale': 0.5
         }
         
         response = requests.get(url, params=params, timeout=10)
@@ -104,19 +119,28 @@ def geocode_address_france(address):
             if data.get('features') and len(data['features']) > 0:
                 feature = data['features'][0]
                 coords = feature['geometry']['coordinates']  # [longitude, latitude]
+                properties = feature['properties']
                 
-                # Vérifier que c'est en France
-                if 41 <= coords[1] <= 51 and -5 <= coords[0] <= 10:
-                    st.info(f"📍 Adresse trouvée via Photon API")
-                    return coords[1], coords[0]  # Retourner latitude, longitude
+                lat = coords[1]
+                lon = coords[0]
+                
+                # Vérifier strictement que c'est en France
+                if 41 <= lat <= 51.5 and -5.5 <= lon <= 10:
+                    country = properties.get('country', '')
+                    if country.lower() in ['france', 'fr', '']:
+                        st.info(f"📍 Adresse trouvée via Photon API")
+                        return lat, lon
+                    else:
+                        st.warning(f"⚠️ Pays détecté : {country}, pas en France")
                 else:
-                    st.warning("⚠️ Les coordonnées ne semblent pas être en France")
+                    st.warning(f"⚠️ Coordonnées hors France : Lat {lat:.4f}, Lon {lon:.4f}")
                     
     except Exception as e:
         st.warning(f"⚠️ Erreur Photon API : {str(e)}")
     
-    st.error("❌ Impossible de géocoder cette adresse. Vérifiez qu'elle est complète et valide.")
-    st.info("💡 Astuce : Essayez d'ajouter le code postal et la ville (ex: 10 rue de la Paix, 75002 Paris)")
+    st.error("❌ Impossible de géocoder cette adresse en France.")
+    st.info("💡 Astuce : Essayez avec le format complet : numéro + rue + code postal + ville")
+    st.info("Exemple : 10 rue de la Paix, 75002 Paris")
     return None, None
 
 def add_address(sheet, address):
@@ -179,8 +203,12 @@ def display_map(df):
     if df.empty:
         st.info("📭 Aucune adresse à afficher sur la carte.")
         # Afficher quand même une carte de la France
-        m = folium.Map(location=FRANCE_CENTER, zoom_start=FRANCE_ZOOM)
-        st_folium(m, width=1400, height=600)
+        m = folium.Map(
+            location=FRANCE_CENTER, 
+            zoom_start=FRANCE_ZOOM,
+            tiles='OpenStreetMap'
+        )
+        st_folium(m, width=1400, height=600, returned_objects=[])
         return
     
     # Vérifier qu'il y a des coordonnées valides
@@ -190,49 +218,74 @@ def display_map(df):
     if df_valid.empty:
         st.warning("⚠️ Aucune coordonnée valide trouvée.")
         # Afficher quand même une carte de la France
-        m = folium.Map(location=FRANCE_CENTER, zoom_start=FRANCE_ZOOM)
-        st_folium(m, width=1400, height=600)
+        m = folium.Map(
+            location=FRANCE_CENTER, 
+            zoom_start=FRANCE_ZOOM,
+            tiles='OpenStreetMap'
+        )
+        st_folium(m, width=1400, height=600, returned_objects=[])
         return
     
-    # Créer la carte centrée sur la France
-    m = folium.Map(
-        location=FRANCE_CENTER,
-        zoom_start=FRANCE_ZOOM,
-        tiles='OpenStreetMap'
-    )
+    # Vérifier si au moins une coordonnée est en France métropolitaine
+    france_coords = df_valid[
+        (df_valid['Latitude'] >= 41) & 
+        (df_valid['Latitude'] <= 51.5) & 
+        (df_valid['Longitude'] >= -5.5) & 
+        (df_valid['Longitude'] <= 10)
+    ]
     
-    # Ajouter les marqueurs
-    for idx, row in df_valid.iterrows():
-        folium.Marker(
-            location=[float(row['Latitude']), float(row['Longitude'])],
-            popup=folium.Popup(f"<b>{row['Adresse']}</b>", max_width=300),
-            tooltip=row['Adresse'],
-            icon=folium.Icon(color='red', icon='home', prefix='fa')
-        ).add_to(m)
+    if france_coords.empty:
+        st.error("⚠️ Aucune des adresses ne semble être en France métropolitaine.")
+        st.info("Vérifiez que les adresses ont été correctement géocodées.")
     
-    # Ajuster le zoom pour inclure tous les points (si plusieurs adresses)
-    if len(df_valid) > 1:
-        # Calculer les limites pour inclure tous les points
-        sw = df_valid[['Latitude', 'Longitude']].min().values.tolist()
-        ne = df_valid[['Latitude', 'Longitude']].max().values.tolist()
-        m.fit_bounds([sw, ne], padding=[50, 50])
-    elif len(df_valid) == 1:
-        # Centrer sur le seul point avec un zoom approprié
+    # Cas 1 : Une seule adresse
+    if len(df_valid) == 1:
+        lat = float(df_valid.iloc[0]['Latitude'])
+        lon = float(df_valid.iloc[0]['Longitude'])
+        
+        # Créer la carte centrée sur cette adresse
         m = folium.Map(
-            location=[float(df_valid.iloc[0]['Latitude']), 
-                     float(df_valid.iloc[0]['Longitude'])],
-            zoom_start=13
+            location=[lat, lon],
+            zoom_start=14,  # Zoom plus proche pour voir le détail
+            tiles='OpenStreetMap'
         )
+        
         folium.Marker(
-            location=[float(df_valid.iloc[0]['Latitude']), 
-                     float(df_valid.iloc[0]['Longitude'])],
+            location=[lat, lon],
             popup=folium.Popup(f"<b>{df_valid.iloc[0]['Adresse']}</b>", max_width=300),
             tooltip=df_valid.iloc[0]['Adresse'],
             icon=folium.Icon(color='red', icon='home', prefix='fa')
         ).add_to(m)
     
+    # Cas 2 : Plusieurs adresses
+    else:
+        # Calculer le centre moyen des coordonnées
+        center_lat = df_valid['Latitude'].mean()
+        center_lon = df_valid['Longitude'].mean()
+        
+        # Créer la carte centrée sur la moyenne
+        m = folium.Map(
+            location=[center_lat, center_lon],
+            zoom_start=8,
+            tiles='OpenStreetMap'
+        )
+        
+        # Ajouter les marqueurs
+        for idx, row in df_valid.iterrows():
+            folium.Marker(
+                location=[float(row['Latitude']), float(row['Longitude'])],
+                popup=folium.Popup(f"<b>{row['Adresse']}</b>", max_width=300),
+                tooltip=row['Adresse'],
+                icon=folium.Icon(color='red', icon='home', prefix='fa')
+            ).add_to(m)
+        
+        # Ajuster les limites pour inclure tous les points
+        sw = df_valid[['Latitude', 'Longitude']].min().values.tolist()
+        ne = df_valid[['Latitude', 'Longitude']].max().values.tolist()
+        m.fit_bounds([sw, ne], padding=[30, 30])
+    
     # Afficher la carte
-    st_folium(m, width=1400, height=600)
+    st_folium(m, width=1400, height=600, returned_objects=[])
 
 # Interface principale
 def main():
@@ -306,6 +359,7 @@ def main():
             st.code("10 boulevard Aristide Briand, 93100 Montreuil")
             st.code("21 rue des Petits Carreaux, 75002 Paris")
             st.code("1 Place de la Concorde, 75008 Paris")
+            st.code("Tour Eiffel, 75007 Paris")
     
     # PAGE 2 : Carte
     elif page == "🗺️ Carte interactive":
