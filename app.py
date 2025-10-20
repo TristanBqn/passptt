@@ -40,6 +40,21 @@ st.set_page_config(
 # FONCTIONS UTILITAIRES
 # ============================================================================
 
+def normalize_coordinate(value):
+    """
+    Normalise une coordonnée qui peut être dans différents formats:
+    - 48.857739 (format normal avec décimales)
+    - 48857739 (format sans décimales - micro-degrés)
+    """
+    try:
+        coord = float(value)
+        # Si la valeur est supérieure à 360, c'est probablement en micro-degrés
+        if abs(coord) > 360:
+            coord = coord / 1000000
+        return coord
+    except (ValueError, TypeError):
+        return None
+
 def is_in_france(lat, lon):
     """Vérifie si les coordonnées sont en France métropolitaine"""
     return (FRANCE_LAT_MIN <= lat <= FRANCE_LAT_MAX and 
@@ -101,10 +116,13 @@ def get_all_addresses(sheet):
         if data:
             df = pd.DataFrame(data)
             if not df.empty:
-                # Conversion et nettoyage des données
-                df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
-                df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
+                # Normaliser les coordonnées (gérer les formats avec/sans décimales)
+                df['Latitude'] = df['Latitude'].apply(normalize_coordinate)
+                df['Longitude'] = df['Longitude'].apply(normalize_coordinate)
+                
+                # Supprimer les lignes avec coordonnées invalides
                 df = df.dropna(subset=['Latitude', 'Longitude'])
+                
                 return df
         return pd.DataFrame(columns=['Adresse', 'Latitude', 'Longitude'])
     except Exception as e:
@@ -232,7 +250,8 @@ def add_address(sheet, address):
             return False
         
         try:
-            sheet.append_row([address, lat, lon])
+            # Utiliser value_input_option='USER_ENTERED' pour préserver les décimales
+            sheet.append_row([address, float(lat), float(lon)], value_input_option='USER_ENTERED')
             st.success(f"✅ Adresse ajoutée avec succès ! (Lat: {lat:.6f}, Lon: {lon:.6f})")
             return True
         except Exception as e:
@@ -273,6 +292,12 @@ def display_map(df):
     if france_coords.empty:
         st.warning("⚠️ Aucune coordonnée valide en France métropolitaine.")
         st.info("Vérifiez que les adresses ont été correctement géocodées.")
+        
+        # Afficher les coordonnées problématiques pour diagnostic
+        with st.expander("🔍 Diagnostic des coordonnées"):
+            st.dataframe(df[['Adresse', 'Latitude', 'Longitude']])
+            st.caption("💡 Vérifiez que les coordonnées sont au format décimal (ex: 48.857739, 2.294844)")
+        
         m = create_empty_france_map()
         st_folium(m, width=1400, height=600, returned_objects=[])
         return
@@ -364,7 +389,12 @@ def main():
         df = get_all_addresses(sheet)
         
         if not df.empty:
-            st.dataframe(df, use_container_width=True, hide_index=False)
+            # Afficher avec les coordonnées normalisées
+            display_df = df.copy()
+            display_df['Latitude'] = display_df['Latitude'].apply(lambda x: f"{x:.6f}")
+            display_df['Longitude'] = display_df['Longitude'].apply(lambda x: f"{x:.6f}")
+            
+            st.dataframe(display_df, use_container_width=True, hide_index=False)
             st.write(f"**Total : {len(df)} adresse(s)**")
             
             # Option de suppression
@@ -392,13 +422,13 @@ def main():
         df = get_all_addresses(sheet)
         
         if not df.empty:
-            st.success(f"📍 {len(df)} adresse(s) chargée(s)")
-            
             # Diagnostic des coordonnées
             valid_coords = df[
                 df['Latitude'].between(FRANCE_LAT_MIN, FRANCE_LAT_MAX) &
                 df['Longitude'].between(FRANCE_LON_MIN, FRANCE_LON_MAX)
             ]
+            
+            st.success(f"📍 {len(valid_coords)} adresse(s) affichée(s) sur {len(df)} totale(s)")
             
             if len(valid_coords) < len(df):
                 st.warning(f"⚠️ {len(df) - len(valid_coords)} adresse(s) hors de France métropolitaine (non affichée(s))")
@@ -406,7 +436,10 @@ def main():
             display_map(df)
             
             with st.expander("📊 Détails des adresses"):
-                st.dataframe(df, use_container_width=True)
+                display_df = df.copy()
+                display_df['Latitude'] = display_df['Latitude'].apply(lambda x: f"{x:.6f}")
+                display_df['Longitude'] = display_df['Longitude'].apply(lambda x: f"{x:.6f}")
+                st.dataframe(display_df, use_container_width=True)
         else:
             st.info("📭 Aucune adresse à afficher. Ajoutez des adresses depuis la page 'Gestion des adresses'.")
             display_map(pd.DataFrame(columns=['Adresse', 'Latitude', 'Longitude']))
