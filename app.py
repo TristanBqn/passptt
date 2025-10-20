@@ -94,11 +94,10 @@ def connect_to_google_sheet():
         st.info("Assurez-vous que les secrets sont correctement configurés dans Streamlit Cloud.")
         return None
 
-@st.cache_data(ttl=300)
-def get_all_addresses(_sheet):
-    """Récupère toutes les adresses depuis le Google Sheet avec cache de 5 minutes"""
+def get_all_addresses(sheet):
+    """Récupère toutes les adresses depuis le Google Sheet"""
     try:
-        data = _sheet.get_all_records()
+        data = sheet.get_all_records()
         if data:
             df = pd.DataFrame(data)
             if not df.empty:
@@ -235,8 +234,6 @@ def add_address(sheet, address):
         try:
             sheet.append_row([address, lat, lon])
             st.success(f"✅ Adresse ajoutée avec succès ! (Lat: {lat:.6f}, Lon: {lon:.6f})")
-            # Invalider le cache après ajout
-            get_all_addresses.clear()
             return True
         except Exception as e:
             st.error(f"❌ Erreur lors de l'ajout : {e}")
@@ -248,8 +245,6 @@ def delete_address(sheet, index):
         # +2 car : +1 pour l'en-tête, +1 car gspread commence à 1
         sheet.delete_rows(index + 2)
         st.success("✅ Adresse supprimée avec succès !")
-        # Invalider le cache après suppression
-        get_all_addresses.clear()
         return True
     except Exception as e:
         st.error(f"❌ Erreur lors de la suppression : {e}")
@@ -340,6 +335,10 @@ def main():
         index=0
     )
     
+    # Bouton de rafraîchissement dans la sidebar
+    if st.sidebar.button("🔄 Rafraîchir les données", help="Recharge les données depuis Google Sheets"):
+        st.rerun()
+    
     # PAGE 1 : Gestion des adresses
     if page == "📍 Gestion des adresses":
         st.header("📍 Gestion des adresses")
@@ -393,7 +392,17 @@ def main():
         df = get_all_addresses(sheet)
         
         if not df.empty:
-            st.success(f"📍 {len(df)} adresse(s) affichée(s) sur la carte")
+            st.success(f"📍 {len(df)} adresse(s) chargée(s)")
+            
+            # Diagnostic des coordonnées
+            valid_coords = df[
+                df['Latitude'].between(FRANCE_LAT_MIN, FRANCE_LAT_MAX) &
+                df['Longitude'].between(FRANCE_LON_MIN, FRANCE_LON_MAX)
+            ]
+            
+            if len(valid_coords) < len(df):
+                st.warning(f"⚠️ {len(df) - len(valid_coords)} adresse(s) hors de France métropolitaine (non affichée(s))")
+            
             display_map(df)
             
             with st.expander("📊 Détails des adresses"):
