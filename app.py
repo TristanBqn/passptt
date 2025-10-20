@@ -2,12 +2,13 @@ import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
-from geopy.geocoders import Nominatim
+from geopy.geocoders import Nominatim, Photon
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 import folium
 from streamlit_folium import st_folium
 import time
 import json
+import requests
 
 # Configuration de la page
 st.set_page_config(
@@ -51,18 +52,52 @@ def connect_to_google_sheet():
 
 def geocode_address(address):
     """Convertit une adresse en coordonnées géographiques"""
+    # Méthode 1 : Essayer avec Photon (plus fiable sur Streamlit Cloud)
     try:
-        geolocator = Nominatim(user_agent="streamlit_address_app")
-        time.sleep(1)  # Respecter les limites de l'API
+        geolocator = Photon(user_agent="streamlit_address_manager", timeout=10)
         location = geolocator.geocode(address)
         
         if location:
             return location.latitude, location.longitude
-        else:
-            return None, None
-    except (GeocoderTimedOut, GeocoderServiceError) as e:
-        st.warning(f"⚠️ Erreur de géocodage : {e}")
-        return None, None
+    except Exception as e:
+        st.warning(f"⚠️ Photon n'a pas fonctionné, essai avec Nominatim...")
+    
+    # Méthode 2 : Essayer avec Nominatim en fallback
+    try:
+        geolocator = Nominatim(
+            user_agent="streamlit_address_manager_app_v1.0",
+            timeout=10
+        )
+        time.sleep(1)
+        location = geolocator.geocode(address, addressdetails=True)
+        
+        if location:
+            return location.latitude, location.longitude
+    except Exception as e:
+        st.warning(f"⚠️ Nominatim n'a pas fonctionné...")
+    
+    # Méthode 3 : API directe OpenStreetMap Nominatim
+    try:
+        url = "https://nominatim.openstreetmap.org/search"
+        params = {
+            'q': address,
+            'format': 'json',
+            'limit': 1
+        }
+        headers = {
+            'User-Agent': 'StreamlitAddressManager/1.0'
+        }
+        
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data and len(data) > 0:
+                return float(data[0]['lat']), float(data[0]['lon'])
+    except Exception as e:
+        st.error(f"❌ Toutes les méthodes de géocodage ont échoué : {e}")
+    
+    return None, None
 
 def add_address(sheet, address):
     """Ajoute une nouvelle adresse dans le Google Sheet"""
