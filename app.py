@@ -91,6 +91,12 @@ def get_all_addresses(sheet):
         data = sheet.get_all_records()
         if data:
             df = pd.DataFrame(data)
+            # Convertir Latitude et Longitude en nombres
+            if not df.empty:
+                df['Latitude'] = pd.to_numeric(df['Latitude'], errors='coerce')
+                df['Longitude'] = pd.to_numeric(df['Longitude'], errors='coerce')
+                # Supprimer les lignes avec des coordonnées invalides
+                df = df.dropna(subset=['Latitude', 'Longitude'])
             return df
         return pd.DataFrame(columns=['Adresse', 'Latitude', 'Longitude'])
     except Exception as e:
@@ -114,26 +120,34 @@ def display_map(df):
         st.info("📭 Aucune adresse à afficher sur la carte.")
         return
     
+    # Vérifier qu'il y a des coordonnées valides
+    valid_coords = df[['Latitude', 'Longitude']].notna().all(axis=1)
+    df_valid = df[valid_coords]
+    
+    if df_valid.empty:
+        st.warning("⚠️ Aucune coordonnée valide trouvée.")
+        return
+    
     # Calculer le centre de la carte
-    center_lat = df['Latitude'].mean()
-    center_lon = df['Longitude'].mean()
+    center_lat = float(df_valid['Latitude'].mean())
+    center_lon = float(df_valid['Longitude'].mean())
     
     # Créer la carte
     m = folium.Map(location=[center_lat, center_lon], zoom_start=12)
     
     # Ajouter les marqueurs
-    for idx, row in df.iterrows():
+    for idx, row in df_valid.iterrows():
         folium.Marker(
-            location=[row['Latitude'], row['Longitude']],
+            location=[float(row['Latitude']), float(row['Longitude'])],
             popup=f"<b>{row['Adresse']}</b>",
             tooltip=row['Adresse'],
             icon=folium.Icon(color='red', icon='home', prefix='fa')
         ).add_to(m)
     
     # Ajuster le zoom pour inclure tous les points
-    if len(df) > 1:
-        sw = df[['Latitude', 'Longitude']].min().values.tolist()
-        ne = df[['Latitude', 'Longitude']].max().values.tolist()
+    if len(df_valid) > 1:
+        sw = df_valid[['Latitude', 'Longitude']].min().values.tolist()
+        ne = df_valid[['Latitude', 'Longitude']].max().values.tolist()
         m.fit_bounds([sw, ne])
     
     # Afficher la carte
