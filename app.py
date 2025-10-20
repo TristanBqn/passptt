@@ -5,6 +5,7 @@ import pandas as pd
 import folium
 from streamlit_folium import st_folium
 import requests
+import re
 
 # ============================================================================
 # CONSTANTES
@@ -40,6 +41,42 @@ st.set_page_config(
 # FONCTIONS UTILITAIRES
 # ============================================================================
 
+def parse_addresses_with_notes(input_text):
+    """
+    Parse une chaîne contenant plusieurs adresses séparées par des virgules
+    et extrait les notes entre parenthèses.
+    
+    Exemple: "adresse 1 (beau balcon), Adresse 2, Adresse 3 (jardin ouvert)"
+    Retourne: [
+        ("adresse 1", "beau balcon"),
+        ("Adresse 2", ""),
+        ("Adresse 3", "jardin ouvert")
+    ]
+    """
+    # Séparer par les virgules
+    addresses = [addr.strip() for addr in input_text.split(',')]
+    
+    parsed = []
+    for addr in addresses:
+        if not addr:
+            continue
+            
+        # Extraire les notes entre parenthèses
+        note_match = re.search(r'\(([^)]+)\)', addr)
+        
+        if note_match:
+            note = note_match.group(1).strip()
+            # Retirer les parenthèses de l'adresse
+            address_clean = re.sub(r'\s*\([^)]+\)', '', addr).strip()
+        else:
+            note = ""
+            address_clean = addr.strip()
+        
+        if address_clean:  # Ignorer les adresses vides
+            parsed.append((address_clean, note))
+    
+    return parsed
+
 def normalize_coordinate(value):
     """
     Normalise une coordonnée qui peut être dans différents formats:
@@ -68,12 +105,20 @@ def create_empty_france_map():
         tiles='OpenStreetMap'
     )
 
-def create_marker(lat, lon, address):
-    """Crée un marqueur Folium standardisé"""
+def create_marker(lat, lon, address, note=""):
+    """Crée un marqueur Folium standardisé avec note optionnelle"""
+    # Créer le texte du popup et tooltip
+    if note:
+        popup_text = f"<b>{address}</b><br><i>📝 {note}</i>"
+        tooltip_text = f"{address} ({note})"
+    else:
+        popup_text = f"<b>{address}</b>"
+        tooltip_text = address
+    
     return folium.Marker(
         location=[lat, lon],
-        popup=folium.Popup(address, max_width=300),
-        tooltip=address,
+        popup=folium.Popup(popup_text, max_width=300),
+        tooltip=tooltip_text,
         icon=folium.Icon(color='red', icon='home', prefix='fa')
     )
 
@@ -95,13 +140,13 @@ def connect_to_google_sheet():
         client = gspread.authorize(creds)
         sheet = client.open_by_key(SHEET_ID).sheet1
         
-        # Vérifier et créer les en-têtes si nécessaire
+        # Vérifier et créer les en-têtes si nécessaire (avec colonne Note)
         try:
             headers = sheet.row_values(1)
-            if not headers or headers != ['Adresse', 'Latitude', 'Longitude']:
-                sheet.update('A1:C1', [['Adresse', 'Latitude', 'Longitude']])
+            if not headers or headers != ['Adresse', 'Latitude', 'Longitude', 'Note']:
+                sheet.update('A1:D1', [['Adresse', 'Latitude', 'Longitude', 'Note']])
         except:
-            sheet.update('A1:C1', [['Adresse', 'Latitude', 'Longitude']])
+            sheet.update('A1:D1', [['Adresse', 'Latitude', 'Longitude', 'Note']])
         
         return sheet
     except Exception as e:
@@ -116,6 +161,10 @@ def get_all_addresses(sheet):
         if data:
             df = pd.DataFrame(data)
             if not df.empty:
+                # S'assurer que la colonne Note existe
+                if 'Note' not in df.columns:
+                    df['Note'] = ''
+                
                 # Normaliser les coordonnées (gérer les formats avec/sans décimales)
                 df['Latitude'] = df['Latitude'].apply(normalize_coordinate)
                 df['Longitude'] = df['Longitude'].apply(normalize_coordinate)
@@ -123,11 +172,14 @@ def get_all_addresses(sheet):
                 # Supprimer les lignes avec coordonnées invalides
                 df = df.dropna(subset=['Latitude', 'Longitude'])
                 
+                # Remplir les notes vides
+                df['Note'] = df['Note'].fillna('')
+                
                 return df
-        return pd.DataFrame(columns=['Adresse', 'Latitude', 'Longitude'])
+        return pd.DataFrame(columns=['Adresse', 'Latitude', 'Longitude', 'Note'])
     except Exception as e:
         st.error(f"❌ Erreur lors de la récupération des données : {e}")
-        return pd.DataFrame(columns=['Adresse', 'Latitude', 'Longitude'])
+        return pd.DataFrame(columns=['Adresse', 'Latitude', 'Longitude', 'Note'])
 
 # ============================================================================
 # GÉOCODAGE
@@ -154,23 +206,13 @@ def try_api_adresse(address):
                 
                 # Validation géographique
                 if not is_in_france(lat, lon):
-                    st.error("❌ Cette adresse ne semble pas être en France métropolitaine.")
-                    st.info(f"Coordonnées trouvées : Lat {lat:.4f}, Lon {lon:.4f}")
                     return None
                 
                 # Validation du score de confiance
-                if score >= GEOCODE_SCORE_MIN:
-                    st.success(f"✅ Adresse trouvée : {full_address} (confiance: {score:.2f})")
+                if score >= GEOCODE_SCORE_MIN or score >= GEOCODE_SCORE_FALLBACK:
                     return lat, lon
-                elif score >= GEOCODE_SCORE_FALLBACK:
-                    st.warning(f"⚠️ Adresse trouvée avec un faible score de confiance ({score:.2f})")
-                    st.info(f"Adresse suggérée : {full_address}")
-                    return lat, lon
-                else:
-                    st.error("Score trop faible, adresse rejetée.")
-                    return None
-    except Exception as e:
-        st.warning(f"⚠️ Erreur API Adresse : {str(e)}")
+    except Exception:
+        pass
     
     return None
 
@@ -199,21 +241,15 @@ def try_photon_api(address):
                 if is_in_france(lat, lon):
                     country = properties.get('country', '').lower()
                     if country in ['france', 'fr', '']:
-                        st.info("📍 Adresse trouvée via Photon API")
                         return lat, lon
-                    else:
-                        st.warning(f"⚠️ Pays détecté : {country}, pas en France")
-                else:
-                    st.warning(f"⚠️ Coordonnées hors France : Lat {lat:.4f}, Lon {lon:.4f}")
-    except Exception as e:
-        st.warning(f"⚠️ Erreur Photon API : {str(e)}")
+    except Exception:
+        pass
     
     return None
 
 def geocode_address_france(address):
     """Convertit une adresse française en coordonnées géographiques"""
     if not address.strip():
-        st.error("❌ Veuillez entrer une adresse valide.")
         return None, None
     
     # Tentative avec l'API principale
@@ -226,17 +262,53 @@ def geocode_address_france(address):
     if result:
         return result
     
-    # Échec complet
-    st.error("❌ Impossible de géocoder cette adresse en France.")
-    st.info("💡 Astuce : Essayez avec le format complet : numéro + rue + code postal + ville")
-    st.info("Exemple : 10 rue de la Paix, 75002 Paris")
     return None, None
 
 # ============================================================================
 # GESTION DES ADRESSES
 # ============================================================================
 
-def add_address(sheet, address):
+def add_addresses_batch(sheet, addresses_with_notes):
+    """
+    Ajoute plusieurs adresses en mode batch
+    addresses_with_notes: liste de tuples (adresse, note)
+    """
+    results = {
+        'success': [],
+        'failed': []
+    }
+    
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    for i, (address, note) in enumerate(addresses_with_notes):
+        # Mettre à jour la progression
+        progress = (i + 1) / len(addresses_with_notes)
+        progress_bar.progress(progress)
+        status_text.text(f"Géocodage en cours... ({i+1}/{len(addresses_with_notes)})")
+        
+        # Géocoder l'adresse
+        lat, lon = geocode_address_france(address)
+        
+        if lat is not None and lon is not None:
+            try:
+                # Ajouter au Google Sheet
+                sheet.append_row(
+                    [address, float(lat), float(lon), note],
+                    value_input_option='USER_ENTERED'
+                )
+                results['success'].append((address, note))
+            except Exception as e:
+                results['failed'].append((address, note, f"Erreur d'ajout: {e}"))
+        else:
+            results['failed'].append((address, note, "Géocodage échoué"))
+    
+    progress_bar.empty()
+    status_text.empty()
+    
+    return results
+
+def add_address(sheet, address, note=""):
     """Ajoute une nouvelle adresse dans le Google Sheet"""
     if not address.strip():
         st.warning("⚠️ Veuillez entrer une adresse valide.")
@@ -246,13 +318,16 @@ def add_address(sheet, address):
         lat, lon = geocode_address_france(address)
         
         if lat is None or lon is None:
-            st.error("❌ Impossible de géocoder cette adresse.")
+            st.error(f"❌ Impossible de géocoder l'adresse : {address}")
             return False
         
         try:
             # Utiliser value_input_option='USER_ENTERED' pour préserver les décimales
-            sheet.append_row([address, float(lat), float(lon)], value_input_option='USER_ENTERED')
-            st.success(f"✅ Adresse ajoutée avec succès ! (Lat: {lat:.6f}, Lon: {lon:.6f})")
+            sheet.append_row([address, float(lat), float(lon), note], value_input_option='USER_ENTERED')
+            if note:
+                st.success(f"✅ Adresse ajoutée : {address} (📝 {note})")
+            else:
+                st.success(f"✅ Adresse ajoutée : {address}")
             return True
         except Exception as e:
             st.error(f"❌ Erreur lors de l'ajout : {e}")
@@ -295,7 +370,7 @@ def display_map(df):
         
         # Afficher les coordonnées problématiques pour diagnostic
         with st.expander("🔍 Diagnostic des coordonnées"):
-            st.dataframe(df[['Adresse', 'Latitude', 'Longitude']])
+            st.dataframe(df[['Adresse', 'Latitude', 'Longitude', 'Note']])
             st.caption("💡 Vérifiez que les coordonnées sont au format décimal (ex: 48.857739, 2.294844)")
         
         m = create_empty_france_map()
@@ -306,13 +381,14 @@ def display_map(df):
     if len(france_coords) == 1:
         row = france_coords.iloc[0]
         lat, lon = float(row['Latitude']), float(row['Longitude'])
+        note = row.get('Note', '')
         
         m = folium.Map(
             location=[lat, lon],
             zoom_start=14,
             tiles='OpenStreetMap'
         )
-        create_marker(lat, lon, row['Adresse']).add_to(m)
+        create_marker(lat, lon, row['Adresse'], note).add_to(m)
     
     # Cas 4 : Plusieurs adresses
     else:
@@ -327,10 +403,12 @@ def display_map(df):
         
         # Ajouter tous les marqueurs
         for _, row in france_coords.iterrows():
+            note = row.get('Note', '')
             create_marker(
                 float(row['Latitude']),
                 float(row['Longitude']),
-                row['Adresse']
+                row['Adresse'],
+                note
             ).add_to(m)
         
         # Ajuster les limites pour inclure tous les points
@@ -368,19 +446,91 @@ def main():
     if page == "📍 Gestion des adresses":
         st.header("📍 Gestion des adresses")
         
-        # Formulaire d'ajout
-        with st.form("add_address_form", clear_on_submit=True):
-            st.subheader("➕ Ajouter une nouvelle adresse")
-            new_address = st.text_input(
-                "Adresse complète",
-                placeholder="Ex: 10 boulevard Aristide Briand, 93100 Montreuil"
-            )
-            st.caption("💡 Pour de meilleurs résultats, incluez le code postal et la ville")
-            submitted = st.form_submit_button("Ajouter l'adresse", use_container_width=True)
-            
-            if submitted:
-                if add_address(sheet, new_address):
-                    st.rerun()
+        # Mode de saisie : simple ou multiple
+        input_mode = st.radio(
+            "Mode de saisie",
+            ["➕ Adresse simple", "📝 Adresses multiples"],
+            horizontal=True
+        )
+        
+        if input_mode == "➕ Adresse simple":
+            # Formulaire d'ajout simple
+            with st.form("add_address_form", clear_on_submit=True):
+                st.subheader("➕ Ajouter une nouvelle adresse")
+                
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    new_address = st.text_input(
+                        "Adresse complète",
+                        placeholder="Ex: 10 boulevard Aristide Briand, 93100 Montreuil"
+                    )
+                with col2:
+                    new_note = st.text_input(
+                        "Note (optionnelle)",
+                        placeholder="Ex: beau balcon"
+                    )
+                
+                st.caption("💡 Pour de meilleurs résultats, incluez le code postal et la ville")
+                submitted = st.form_submit_button("Ajouter l'adresse", use_container_width=True)
+                
+                if submitted:
+                    if add_address(sheet, new_address, new_note):
+                        st.rerun()
+        
+        else:  # Mode multiple
+            # Formulaire d'ajout multiple
+            with st.form("add_addresses_batch_form", clear_on_submit=True):
+                st.subheader("📝 Ajouter plusieurs adresses")
+                
+                st.info("💡 **Format attendu :** Séparez les adresses par des virgules. Ajoutez des notes entre parenthèses.")
+                st.caption("**Exemple :** Tour Eiffel, 75007 Paris (vue imprenable), 10 rue de Rivoli, 75001 Paris, Arc de Triomphe (monument historique)")
+                
+                batch_input = st.text_area(
+                    "Adresses (séparées par des virgules)",
+                    placeholder="Adresse 1 (note 1), Adresse 2, Adresse 3 (note 3)...",
+                    height=150
+                )
+                
+                submitted_batch = st.form_submit_button("Ajouter toutes les adresses", use_container_width=True)
+                
+                if submitted_batch and batch_input.strip():
+                    # Parser les adresses
+                    addresses_with_notes = parse_addresses_with_notes(batch_input)
+                    
+                    if addresses_with_notes:
+                        st.info(f"📊 {len(addresses_with_notes)} adresse(s) détectée(s)")
+                        
+                        # Afficher un aperçu
+                        with st.expander("👀 Aperçu des adresses à ajouter"):
+                            for i, (addr, note) in enumerate(addresses_with_notes, 1):
+                                if note:
+                                    st.write(f"{i}. **{addr}** 📝 _{note}_")
+                                else:
+                                    st.write(f"{i}. **{addr}**")
+                        
+                        # Ajouter les adresses
+                        results = add_addresses_batch(sheet, addresses_with_notes)
+                        
+                        # Afficher les résultats
+                        if results['success']:
+                            st.success(f"✅ {len(results['success'])} adresse(s) ajoutée(s) avec succès !")
+                            with st.expander("✅ Adresses ajoutées"):
+                                for addr, note in results['success']:
+                                    if note:
+                                        st.write(f"• {addr} 📝 _{note}_")
+                                    else:
+                                        st.write(f"• {addr}")
+                        
+                        if results['failed']:
+                            st.error(f"❌ {len(results['failed'])} adresse(s) échouée(s)")
+                            with st.expander("❌ Adresses échouées"):
+                                for addr, note, reason in results['failed']:
+                                    st.write(f"• {addr} - {reason}")
+                        
+                        if results['success']:
+                            st.rerun()
+                    else:
+                        st.warning("⚠️ Aucune adresse valide détectée.")
         
         st.divider()
         
@@ -394,6 +544,9 @@ def main():
             display_df['Latitude'] = display_df['Latitude'].apply(lambda x: f"{x:.6f}")
             display_df['Longitude'] = display_df['Longitude'].apply(lambda x: f"{x:.6f}")
             
+            # Réorganiser les colonnes
+            display_df = display_df[['Adresse', 'Note', 'Latitude', 'Longitude']]
+            
             st.dataframe(display_df, use_container_width=True, hide_index=False)
             st.write(f"**Total : {len(df)} adresse(s)**")
             
@@ -402,7 +555,8 @@ def main():
                 selected_idx = st.selectbox(
                     "Sélectionnez une adresse à supprimer",
                     options=range(len(df)),
-                    format_func=lambda x: f"{x+1}. {df.iloc[x]['Adresse']}"
+                    format_func=lambda x: f"{x+1}. {df.iloc[x]['Adresse']}" + 
+                                         (f" ({df.iloc[x]['Note']})" if df.iloc[x]['Note'] else "")
                 )
                 
                 if st.button("🗑️ Supprimer cette adresse", type="secondary"):
@@ -411,10 +565,7 @@ def main():
         else:
             st.info("📭 Aucune adresse enregistrée pour le moment.")
             st.markdown("**Exemples d'adresses à ajouter :**")
-            st.code("10 boulevard Aristide Briand, 93100 Montreuil")
-            st.code("21 rue des Petits Carreaux, 75002 Paris")
-            st.code("1 Place de la Concorde, 75008 Paris")
-            st.code("Tour Eiffel, 75007 Paris")
+            st.code("Tour Eiffel, 75007 Paris (vue imprenable), 10 rue de Rivoli, 75001 Paris, Arc de Triomphe (monument historique)")
     
     # PAGE 2 : Carte
     elif page == "🗺️ Carte interactive":
@@ -439,10 +590,11 @@ def main():
                 display_df = df.copy()
                 display_df['Latitude'] = display_df['Latitude'].apply(lambda x: f"{x:.6f}")
                 display_df['Longitude'] = display_df['Longitude'].apply(lambda x: f"{x:.6f}")
+                display_df = display_df[['Adresse', 'Note', 'Latitude', 'Longitude']]
                 st.dataframe(display_df, use_container_width=True)
         else:
             st.info("📭 Aucune adresse à afficher. Ajoutez des adresses depuis la page 'Gestion des adresses'.")
-            display_map(pd.DataFrame(columns=['Adresse', 'Latitude', 'Longitude']))
+            display_map(pd.DataFrame(columns=['Adresse', 'Latitude', 'Longitude', 'Note']))
 
 if __name__ == "__main__":
     main()
