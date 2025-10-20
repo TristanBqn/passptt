@@ -1,6 +1,6 @@
 import streamlit as st
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 import pandas as pd
 from geopy.geocoders import Nominatim, Photon
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
@@ -30,9 +30,10 @@ def connect_to_google_sheet():
             "https://www.googleapis.com/auth/drive"
         ]
         
-        # Utiliser les secrets Streamlit Cloud
+        # Utiliser les secrets Streamlit Cloud avec google-auth
         creds_dict = dict(st.secrets["gcp_service_account"])
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+        
         client = gspread.authorize(creds)
         sheet = client.open_by_key(SHEET_ID).sheet1
         
@@ -45,58 +46,87 @@ def connect_to_google_sheet():
             sheet.update('A1:C1', [['Adresse', 'Latitude', 'Longitude']])
         
         return sheet
+    
     except Exception as e:
         st.error(f"❌ Erreur de connexion au Google Sheet : {e}")
-        st.info("Assurez-vous que le fichier credentials.json est présent dans le même répertoire.")
+        st.info("Assurez-vous que les secrets sont correctement configurés dans Streamlit Cloud.")
         return None
 
 def geocode_address(address):
-    """Convertit une adresse en coordonnées géographiques"""
-    # Méthode 1 : Essayer avec Photon (plus fiable sur Streamlit Cloud)
-    try:
-        geolocator = Photon(user_agent="streamlit_address_manager", timeout=10)
-        location = geolocator.geocode(address)
-        
-        if location:
-            return location.latitude, location.longitude
-    except Exception as e:
-        st.warning(f"⚠️ Photon n'a pas fonctionné, essai avec Nominatim...")
+    """Convertit une adresse française en coordonnées géographiques"""
     
-    # Méthode 2 : Essayer avec Nominatim en fallback
+    # Ajouter ", France" si pas déjà présent pour améliorer la précision
+    if "france" not in address.lower():
+        address_with_country = f"{address}, France"
+    else:
+        address_with_country = address
+    
+    # Méthode 1 : Nominatim avec restriction à la France
     try:
         geolocator = Nominatim(
-            user_agent="streamlit_address_manager_app_v1.0",
+            user_agent="streamlit_address_manager_france_v1.0",
             timeout=10
         )
-        time.sleep(1)
-        location = geolocator.geocode(address, addressdetails=True)
+        time.sleep(1)  # Respecter la politique d'usage de Nominatim
+        
+        # Utiliser countrycodes pour limiter à la France
+        location = geolocator.geocode(
+            address_with_country,
+            country_codes=['fr'],  # Restriction à la France
+            addressdetails=True,
+            language='fr'
+        )
         
         if location:
+            st.info(f"📍 Adresse trouvée : {location.address}")
             return location.latitude, location.longitude
+            
     except Exception as e:
-        st.warning(f"⚠️ Nominatim n'a pas fonctionné...")
+        st.warning(f"⚠️ Nominatim n'a pas fonctionné : {str(e)}")
     
-    # Méthode 3 : API directe OpenStreetMap Nominatim
+    # Méthode 2 : API directe OpenStreetMap avec restriction France
     try:
         url = "https://nominatim.openstreetmap.org/search"
         params = {
-            'q': address,
+            'q': address_with_country,
             'format': 'json',
-            'limit': 1
+            'limit': 1,
+            'countrycodes': 'fr',  # Restriction à la France
+            'addressdetails': 1
         }
         headers = {
             'User-Agent': 'StreamlitAddressManager/1.0'
         }
         
+        time.sleep(1)  # Respecter la politique d'usage
         response = requests.get(url, params=params, headers=headers, timeout=10)
         
         if response.status_code == 200:
             data = response.json()
             if data and len(data) > 0:
+                st.info(f"📍 Adresse trouvée : {data[0].get('display_name', '')}")
                 return float(data[0]['lat']), float(data[0]['lon'])
+                
     except Exception as e:
-        st.error(f"❌ Toutes les méthodes de géocodage ont échoué : {e}")
+        st.warning(f"⚠️ API Nominatim n'a pas fonctionné : {str(e)}")
     
+    # Méthode 3 : Photon avec restriction France (fallback)
+    try:
+        geolocator = Photon(user_agent="streamlit_address_manager", timeout=10)
+        location = geolocator.geocode(address_with_country)
+        
+        if location:
+            # Vérifier que c'est bien en France (latitude entre 41 et 51, longitude entre -5 et 10)
+            if 41 <= location.latitude <= 51 and -5 <= location.longitude <= 10:
+                st.info(f"📍 Adresse trouvée via Photon")
+                return location.latitude, location.longitude
+            else:
+                st.warning("⚠️ Les coordonnées trouvées ne semblent pas être en France")
+                
+    except Exception as e:
+        st.warning(f"⚠️ Photon n'a pas fonctionné : {str(e)}")
+    
+    st.error("❌ Impossible de géocoder cette adresse. Vérifiez qu'elle est complète et valide.")
     return None, None
 
 def add_address(sheet, address):
@@ -150,9 +180,17 @@ def delete_address(sheet, index):
         return False
 
 def display_map(df):
-    """Affiche les adresses sur une carte Folium"""
+    """Affiche les adresses sur une carte Folium centrée sur la France"""
+    
+    # Coordonnées du centre de la France métropolitaine
+    FRANCE_CENTER = [46.603354, 1.888334]
+    FRANCE_ZOOM = 6
+    
     if df.empty:
         st.info("📭 Aucune adresse à afficher sur la carte.")
+        # Afficher quand même une carte de la France
+        m = folium.Map(location=FRANCE_CENTER, zoom_start=FRANCE_ZOOM)
+        st_folium(m, width=1400, height=600)
         return
     
     # Vérifier qu'il y a des coordonnées valides
@@ -161,29 +199,47 @@ def display_map(df):
     
     if df_valid.empty:
         st.warning("⚠️ Aucune coordonnée valide trouvée.")
+        # Afficher quand même une carte de la France
+        m = folium.Map(location=FRANCE_CENTER, zoom_start=FRANCE_ZOOM)
+        st_folium(m, width=1400, height=600)
         return
     
-    # Calculer le centre de la carte
-    center_lat = float(df_valid['Latitude'].mean())
-    center_lon = float(df_valid['Longitude'].mean())
-    
-    # Créer la carte
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=12)
+    # Créer la carte centrée sur la France
+    m = folium.Map(
+        location=FRANCE_CENTER,
+        zoom_start=FRANCE_ZOOM,
+        tiles='OpenStreetMap'
+    )
     
     # Ajouter les marqueurs
     for idx, row in df_valid.iterrows():
         folium.Marker(
             location=[float(row['Latitude']), float(row['Longitude'])],
-            popup=f"<b>{row['Adresse']}</b>",
+            popup=folium.Popup(f"<b>{row['Adresse']}</b>", max_width=300),
             tooltip=row['Adresse'],
             icon=folium.Icon(color='red', icon='home', prefix='fa')
         ).add_to(m)
     
-    # Ajuster le zoom pour inclure tous les points
+    # Ajuster le zoom pour inclure tous les points (si plusieurs adresses)
     if len(df_valid) > 1:
+        # Calculer les limites pour inclure tous les points
         sw = df_valid[['Latitude', 'Longitude']].min().values.tolist()
         ne = df_valid[['Latitude', 'Longitude']].max().values.tolist()
-        m.fit_bounds([sw, ne])
+        m.fit_bounds([sw, ne], padding=[50, 50])
+    elif len(df_valid) == 1:
+        # Centrer sur le seul point avec un zoom approprié
+        m = folium.Map(
+            location=[float(df_valid.iloc[0]['Latitude']), 
+                     float(df_valid.iloc[0]['Longitude'])],
+            zoom_start=13
+        )
+        folium.Marker(
+            location=[float(df_valid.iloc[0]['Latitude']), 
+                     float(df_valid.iloc[0]['Longitude'])],
+            popup=folium.Popup(f"<b>{df_valid.iloc[0]['Adresse']}</b>", max_width=300),
+            tooltip=df_valid.iloc[0]['Adresse'],
+            icon=folium.Icon(color='red', icon='home', prefix='fa')
+        ).add_to(m)
     
     # Afficher la carte
     st_folium(m, width=1400, height=600)
@@ -216,6 +272,7 @@ def main():
                 "Adresse complète",
                 placeholder="Ex: 10 boulevard Aristide Briand, Montreuil"
             )
+            
             submitted = st.form_submit_button("Ajouter l'adresse", use_container_width=True)
             
             if submitted:
@@ -234,7 +291,6 @@ def main():
                 use_container_width=True,
                 hide_index=False
             )
-            
             st.write(f"**Total : {len(df)} adresse(s)**")
             
             # Option de suppression
@@ -259,7 +315,6 @@ def main():
     # PAGE 2 : Carte
     elif page == "🗺️ Carte Google Maps":
         st.header("🗺️ Visualisation sur carte")
-        
         df = get_all_addresses(sheet)
         
         if not df.empty:
@@ -271,6 +326,8 @@ def main():
                 st.dataframe(df, use_container_width=True)
         else:
             st.info("📭 Aucune adresse à afficher. Ajoutez des adresses depuis la page 'Gestion des adresses'.")
+            # Afficher quand même une carte de la France vide
+            display_map(pd.DataFrame(columns=['Adresse', 'Latitude', 'Longitude']))
 
 if __name__ == "__main__":
     main()
