@@ -2,12 +2,9 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
-from geopy.geocoders import Nominatim, Photon
-from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 import folium
 from streamlit_folium import st_folium
 import time
-import json
 import requests
 
 # Configuration de la page
@@ -52,81 +49,74 @@ def connect_to_google_sheet():
         st.info("Assurez-vous que les secrets sont correctement configurés dans Streamlit Cloud.")
         return None
 
-def geocode_address(address):
-    """Convertit une adresse française en coordonnées géographiques"""
+def geocode_address_france(address):
+    """Convertit une adresse française en coordonnées géographiques avec l'API Adresse (data.gouv.fr)"""
     
-    # Ajouter ", France" si pas déjà présent pour améliorer la précision
-    if "france" not in address.lower():
-        address_with_country = f"{address}, France"
-    else:
-        address_with_country = address
+    if not address.strip():
+        st.error("❌ Veuillez entrer une adresse valide.")
+        return None, None
     
-    # Méthode 1 : Nominatim avec restriction à la France
+    # Méthode 1 : API Adresse officielle France (data.gouv.fr) - GRATUITE et SANS LIMITE
     try:
-        geolocator = Nominatim(
-            user_agent="streamlit_address_manager_france_v1.0",
-            timeout=10
-        )
-        time.sleep(1)  # Respecter la politique d'usage de Nominatim
-        
-        # Utiliser countrycodes pour limiter à la France
-        location = geolocator.geocode(
-            address_with_country,
-            country_codes=['fr'],  # Restriction à la France
-            addressdetails=True,
-            language='fr'
-        )
-        
-        if location:
-            st.info(f"📍 Adresse trouvée : {location.address}")
-            return location.latitude, location.longitude
-            
-    except Exception as e:
-        st.warning(f"⚠️ Nominatim n'a pas fonctionné : {str(e)}")
-    
-    # Méthode 2 : API directe OpenStreetMap avec restriction France
-    try:
-        url = "https://nominatim.openstreetmap.org/search"
+        url = "https://api-adresse.data.gouv.fr/search/"
         params = {
-            'q': address_with_country,
-            'format': 'json',
-            'limit': 1,
-            'countrycodes': 'fr',  # Restriction à la France
-            'addressdetails': 1
-        }
-        headers = {
-            'User-Agent': 'StreamlitAddressManager/1.0'
+            'q': address,
+            'limit': 1
         }
         
-        time.sleep(1)  # Respecter la politique d'usage
-        response = requests.get(url, params=params, headers=headers, timeout=10)
+        response = requests.get(url, params=params, timeout=10)
         
         if response.status_code == 200:
             data = response.json()
-            if data and len(data) > 0:
-                st.info(f"📍 Adresse trouvée : {data[0].get('display_name', '')}")
-                return float(data[0]['lat']), float(data[0]['lon'])
+            
+            if data.get('features') and len(data['features']) > 0:
+                feature = data['features'][0]
+                coords = feature['geometry']['coordinates']  # [longitude, latitude]
+                full_address = feature['properties'].get('label', address)
+                score = feature['properties'].get('score', 0)
                 
+                # Vérifier la qualité du résultat
+                if score >= 0.5:  # Score de confiance minimum
+                    st.success(f"✅ Adresse trouvée : {full_address} (score: {score:.2f})")
+                    return coords[1], coords[0]  # Retourner latitude, longitude
+                else:
+                    st.warning(f"⚠️ Adresse trouvée avec un faible score de confiance ({score:.2f})")
+                    st.info(f"Adresse suggérée : {full_address}")
+                    return coords[1], coords[0]
+                    
     except Exception as e:
-        st.warning(f"⚠️ API Nominatim n'a pas fonctionné : {str(e)}")
+        st.error(f"❌ Erreur API Adresse : {str(e)}")
     
-    # Méthode 3 : Photon avec restriction France (fallback)
+    # Méthode 2 : Photon API (komoot) - Alternative gratuite
     try:
-        geolocator = Photon(user_agent="streamlit_address_manager", timeout=10)
-        location = geolocator.geocode(address_with_country)
+        url = "https://photon.komoot.io/api/"
+        params = {
+            'q': address,
+            'limit': 1,
+            'lang': 'fr'
+        }
         
-        if location:
-            # Vérifier que c'est bien en France (latitude entre 41 et 51, longitude entre -5 et 10)
-            if 41 <= location.latitude <= 51 and -5 <= location.longitude <= 10:
-                st.info(f"📍 Adresse trouvée via Photon")
-                return location.latitude, location.longitude
-            else:
-                st.warning("⚠️ Les coordonnées trouvées ne semblent pas être en France")
+        response = requests.get(url, params=params, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            if data.get('features') and len(data['features']) > 0:
+                feature = data['features'][0]
+                coords = feature['geometry']['coordinates']  # [longitude, latitude]
                 
+                # Vérifier que c'est en France
+                if 41 <= coords[1] <= 51 and -5 <= coords[0] <= 10:
+                    st.info(f"📍 Adresse trouvée via Photon API")
+                    return coords[1], coords[0]  # Retourner latitude, longitude
+                else:
+                    st.warning("⚠️ Les coordonnées ne semblent pas être en France")
+                    
     except Exception as e:
-        st.warning(f"⚠️ Photon n'a pas fonctionné : {str(e)}")
+        st.warning(f"⚠️ Erreur Photon API : {str(e)}")
     
     st.error("❌ Impossible de géocoder cette adresse. Vérifiez qu'elle est complète et valide.")
+    st.info("💡 Astuce : Essayez d'ajouter le code postal et la ville (ex: 10 rue de la Paix, 75002 Paris)")
     return None, None
 
 def add_address(sheet, address):
@@ -136,10 +126,10 @@ def add_address(sheet, address):
         return False
     
     with st.spinner("🔍 Géocodage de l'adresse en cours..."):
-        lat, lon = geocode_address(address)
+        lat, lon = geocode_address_france(address)
     
     if lat is None or lon is None:
-        st.error("❌ Impossible de géocoder cette adresse. Vérifiez qu'elle est valide.")
+        st.error("❌ Impossible de géocoder cette adresse.")
         return False
     
     try:
@@ -246,7 +236,8 @@ def display_map(df):
 
 # Interface principale
 def main():
-    st.title("🏠 Application de Gestion d'Adresses")
+    st.title("🏠 Application de Gestion d'Adresses Françaises")
+    st.caption("Utilise l'API Adresse officielle du gouvernement français (data.gouv.fr)")
     
     # Connexion au Google Sheet
     sheet = connect_to_google_sheet()
@@ -257,7 +248,7 @@ def main():
     # Sélection de la page
     page = st.sidebar.radio(
         "Navigation",
-        ["📍 Gestion des adresses", "🗺️ Carte Google Maps"],
+        ["📍 Gestion des adresses", "🗺️ Carte interactive"],
         index=0
     )
     
@@ -270,13 +261,16 @@ def main():
             st.subheader("➕ Ajouter une nouvelle adresse")
             new_address = st.text_input(
                 "Adresse complète",
-                placeholder="Ex: 10 boulevard Aristide Briand, Montreuil"
+                placeholder="Ex: 10 boulevard Aristide Briand, 93100 Montreuil"
             )
+            
+            st.caption("💡 Pour de meilleurs résultats, incluez le code postal et la ville")
             
             submitted = st.form_submit_button("Ajouter l'adresse", use_container_width=True)
             
             if submitted:
                 if add_address(sheet, new_address):
+                    time.sleep(1)
                     st.rerun()
         
         st.divider()
@@ -304,16 +298,17 @@ def main():
                     
                     if st.button("🗑️ Supprimer cette adresse", type="secondary"):
                         if delete_address(sheet, selected_idx):
+                            time.sleep(1)
                             st.rerun()
         else:
             st.info("📭 Aucune adresse enregistrée pour le moment.")
             st.markdown("**Exemples d'adresses à ajouter :**")
-            st.code("10 boulevard Aristide Briand, Montreuil")
-            st.code("21 rue des Petits Carreaux, Paris")
-            st.code("40 rue d'Aboukir, Paris")
+            st.code("10 boulevard Aristide Briand, 93100 Montreuil")
+            st.code("21 rue des Petits Carreaux, 75002 Paris")
+            st.code("1 Place de la Concorde, 75008 Paris")
     
     # PAGE 2 : Carte
-    elif page == "🗺️ Carte Google Maps":
+    elif page == "🗺️ Carte interactive":
         st.header("🗺️ Visualisation sur carte")
         df = get_all_addresses(sheet)
         
