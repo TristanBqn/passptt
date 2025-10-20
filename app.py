@@ -7,6 +7,7 @@ from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 import folium
 from streamlit_folium import st_folium
 import time
+import json
 
 # Configuration de la page
 st.set_page_config(
@@ -27,7 +28,10 @@ def connect_to_google_sheet():
             "https://spreadsheets.google.com/feeds",
             "https://www.googleapis.com/auth/drive"
         ]
-        creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
+        
+        # Utiliser les secrets Streamlit Cloud
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         sheet = client.open_by_key(SHEET_ID).sheet1
         
