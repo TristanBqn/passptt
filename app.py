@@ -22,12 +22,48 @@ def check_password():
     if st.session_state.get("password_correct", False):
         return True
 
+    # CSS personnalisé pour centrer le formulaire et cacher le label
+    st.markdown("""
+        <style>
+        /* Centrer le contenu de la page d'authentification */
+        .block-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 70vh;
+        }
+        
+        /* Cacher le label du text_input */
+        .stTextInput > label {
+            display: none;
+        }
+        
+        /* Cacher l'icône "oeil" pour voir le mot de passe */
+        button[kind="iconButton"][aria-label="Show password text"] {
+            display: none !important;
+        }
+        
+        /* Centrer le conteneur du mot de passe */
+        .stTextInput {
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        
+        /* Style du message d'erreur */
+        .stAlert {
+            max-width: 400px;
+            margin: 10px auto;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
     # Afficher le formulaire de connexion
     st.text_input(
-        "🔒 Mot de passe", 
+        "",  # Label vide (sera caché par le CSS)
         type="password", 
         on_change=password_entered, 
-        key="password"
+        key="password",
+        placeholder="Entrez le mot de passe"
     )
     
     if "password_correct" in st.session_state:
@@ -35,9 +71,6 @@ def check_password():
     
     return False
 
-# Vérifier l'authentification avant d'afficher l'application
-if not check_password():
-    st.stop()
 # ============================================================================
 # CONSTANTES
 # ============================================================================
