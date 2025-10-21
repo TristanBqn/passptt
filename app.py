@@ -14,7 +14,7 @@ def check_password():
         """Vérifie si le mot de passe est correct."""
         if st.session_state["password"] == st.secrets["password"]:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Ne pas garder le mot de passe en mémoire
+            del st.session_state["password"]
         else:
             st.session_state["password_correct"] = False
 
@@ -22,10 +22,10 @@ def check_password():
     if st.session_state.get("password_correct", False):
         return True
 
-    # CSS personnalisé pour centrer le formulaire et cacher le label
+    # CSS personnalisé pour centrer et styliser le formulaire
     st.markdown("""
         <style>
-        /* Centrer le contenu de la page d'authentification */
+        /* Centrer verticalement et horizontalement */
         .block-container {
             display: flex;
             justify-content: center;
@@ -33,23 +33,23 @@ def check_password():
             min-height: 70vh;
         }
         
-        /* Cacher le label du text_input */
+        /* Cacher le label */
         .stTextInput > label {
             display: none;
         }
         
-        /* Cacher l'icône "oeil" pour voir le mot de passe */
-        button[kind="iconButton"][aria-label="Show password text"] {
+        /* Cacher l'icône pour voir le mot de passe */
+        button[kind="iconButton"] {
             display: none !important;
         }
         
-        /* Centrer le conteneur du mot de passe */
+        /* Centrer et limiter la largeur du champ */
         .stTextInput {
             max-width: 400px;
             margin: 0 auto;
         }
         
-        /* Style du message d'erreur */
+        /* Centrer le message d'erreur */
         .stAlert {
             max-width: 400px;
             margin: 10px auto;
@@ -57,13 +57,14 @@ def check_password():
         </style>
     """, unsafe_allow_html=True)
 
-    # Afficher le formulaire de connexion
+    # Afficher le formulaire
     st.text_input(
-        "",  # Label vide (sera caché par le CSS)
+        "password_label",  # Label (sera caché par CSS)
         type="password", 
         on_change=password_entered, 
         key="password",
-        placeholder="Entrez le mot de passe"
+        placeholder="Entrez le mot de passe",
+        label_visibility="collapsed"  # IMPORTANT: Paramètre natif Streamlit
     )
     
     if "password_correct" in st.session_state:
