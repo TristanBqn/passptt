@@ -441,8 +441,8 @@ def display_map(df):
 # ============================================================================
 
 def main():
-    st.title("🏠 Application de Gestion d'Adresses Françaises")
-    st.caption("Utilise l'API Adresse officielle du gouvernement français (data.gouv.fr)")
+    st.title("🏠 Gestion de mes pass PTT et codes")
+    st.caption("Propriété intellectuelle de Tristan BANNIER")
     
     sheet = connect_to_google_sheet()
     if sheet is None:
@@ -468,7 +468,7 @@ def main():
                 with col2:
                     new_note = st.text_input("Note (optionnelle)", placeholder="Ex: beau balcon")
                 
-                st.caption("💡 Incluez le code postal et la ville pour de meilleurs résultats")
+                st.caption("💡 Inclure le code postal et la ville pour de meilleurs résultats")
                 submitted = st.form_submit_button("Ajouter l'adresse", use_container_width=True)
                 
                 if submitted:
@@ -568,7 +568,7 @@ def main():
             if len(valid_coords) < len(df):
                 st.warning(f"⚠️ {len(df) - len(valid_coords)} adresse(s) hors France (coordonnées invalides)")
             
-            st.info("💡 **Cliquez sur un marqueur** pour voir les détails et accéder à Street View. Les coordonnées sont automatiquement corrigées à l'affichage.")
+            st.info("💡 **Cliquer sur un marqueur** pour voir les détails et accéder à Street View. Les coordonnées sont automatiquement corrigées à l'affichage.")
             
             display_map(df)
             
