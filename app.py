@@ -520,7 +520,7 @@ def main():
                     addresses_with_notes = parse_addresses_with_notes(batch_input)
                     
                     if addresses_with_notes:
-                        st.info(f"📊 {len(addresses_with_notes)} adresse(s) détectée(s)")
+                        st.info(f"📊 {len(addresses_with_notes)} adresses détectées")
                         
                         with st.expander("👀 Aperçu des adresses"):
                             for i, (addr, note) in enumerate(addresses_with_notes, 1):
@@ -532,19 +532,19 @@ def main():
                         results = add_addresses_batch(sheet, addresses_with_notes)
                         
                         if results['success']:
-                            st.success(f"✅ {len(results['success'])} adresse(s) ajoutée(s) !")
+                            st.success(f"✅ {len(results['success'])} adresses ajoutées !")
                             with st.expander("✅ Adresses ajoutées"):
                                 for addr, note in results['success']:
                                     st.write(f"• {addr}" + (f" 📝 _{note}_" if note else ""))
                         
                         if results['corrected']:
-                            st.warning(f"⚠️ {len(results['corrected'])} adresse(s) corrigée(s)")
+                            st.warning(f"⚠️ {len(results['corrected'])} adresses corrigées")
                             with st.expander("⚠️ Corrections appliquées"):
                                 for addr, note, msg in results['corrected']:
                                     st.write(f"• {addr}: {msg}")
                         
                         if results['failed']:
-                            st.error(f"❌ {len(results['failed'])} adresse(s) échouée(s)")
+                            st.error(f"❌ {len(results['failed'])} adresses échouées")
                             with st.expander("❌ Échecs"):
                                 for addr, note, reason in results['failed']:
                                     st.write(f"• {addr} - {reason}")
@@ -566,7 +566,7 @@ def main():
             display_df = display_df[['Adresse', 'Note', 'Latitude', 'Longitude']]
             
             st.dataframe(display_df, use_container_width=True, hide_index=False)
-            st.write(f"**Total : {len(df)} adresse(s)**")
+            st.write(f"**Total : {len(df)} adresses**")
             
             with st.expander("🗑️ Supprimer une adresse"):
                 selected_idx = st.selectbox(
@@ -597,7 +597,7 @@ def main():
             st.success(f"📍 {len(valid_coords)} adresses affichées sur {len(df)} totales")
             
             if len(valid_coords) < len(df):
-                st.warning(f"⚠️ {len(df) - len(valid_coords)} adresse(s) hors France (coordonnées invalides)")
+                st.warning(f"⚠️ {len(df) - len(valid_coords)} adresses hors France (coordonnées invalides)")
             
             display_map(df)
             
