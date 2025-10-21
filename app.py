@@ -7,6 +7,37 @@ from streamlit_folium import st_folium
 import requests
 import re
 
+def check_password():
+    """Retourne True si l'utilisateur a entré le bon mot de passe."""
+    
+    def password_entered():
+        """Vérifie si le mot de passe est correct."""
+        if st.session_state["password"] == st.secrets["password"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # Ne pas garder le mot de passe en mémoire
+        else:
+            st.session_state["password_correct"] = False
+
+    # Si déjà authentifié
+    if st.session_state.get("password_correct", False):
+        return True
+
+    # Afficher le formulaire de connexion
+    st.text_input(
+        "🔒 Mot de passe", 
+        type="password", 
+        on_change=password_entered, 
+        key="password"
+    )
+    
+    if "password_correct" in st.session_state:
+        st.error("😕 Mot de passe incorrect")
+    
+    return False
+
+# Vérifier l'authentification avant d'afficher l'application
+if not check_password():
+    st.stop()
 # ============================================================================
 # CONSTANTES
 # ============================================================================
