@@ -14,7 +14,7 @@ def check_password():
         """Vérifie si le mot de passe est correct."""
         if st.session_state["password"] == st.secrets["password"]:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]
+            del st.session_state["password"]  # Ne pas garder le mot de passe en mémoire
         else:
             st.session_state["password_correct"] = False
 
@@ -22,49 +22,12 @@ def check_password():
     if st.session_state.get("password_correct", False):
         return True
 
-    # CSS personnalisé pour centrer et styliser le formulaire
-    st.markdown("""
-        <style>
-        /* Centrer verticalement et horizontalement */
-        .block-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 70vh;
-        }
-        
-        /* Cacher le label */
-        .stTextInput > label {
-            display: none;
-        }
-        
-        /* Cacher l'icône pour voir le mot de passe */
-        button[kind="iconButton"] {
-            display: none !important;
-        }
-        
-        /* Centrer et limiter la largeur du champ */
-        .stTextInput {
-            max-width: 400px;
-            margin: 0 auto;
-        }
-        
-        /* Centrer le message d'erreur */
-        .stAlert {
-            max-width: 400px;
-            margin: 10px auto;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-
-    # Afficher le formulaire
+    # Afficher le formulaire de connexion
     st.text_input(
-        "password_label",  # Label (sera caché par CSS)
+        "🔒 Mot de passe", 
         type="password", 
         on_change=password_entered, 
-        key="password",
-        placeholder="Entrez le mot de passe",
-        label_visibility="collapsed"  # IMPORTANT: Paramètre natif Streamlit
+        key="password"
     )
     
     if "password_correct" in st.session_state:
@@ -72,6 +35,9 @@ def check_password():
     
     return False
 
+# Vérifier l'authentification avant d'afficher l'application
+if not check_password():
+    st.stop()
 # ============================================================================
 # CONSTANTES
 # ============================================================================
@@ -554,7 +520,7 @@ def main():
                     addresses_with_notes = parse_addresses_with_notes(batch_input)
                     
                     if addresses_with_notes:
-                        st.info(f"📊 {len(addresses_with_notes)} adresses détectées")
+                        st.info(f"📊 {len(addresses_with_notes)} adresse(s) détectée(s)")
                         
                         with st.expander("👀 Aperçu des adresses"):
                             for i, (addr, note) in enumerate(addresses_with_notes, 1):
@@ -566,19 +532,19 @@ def main():
                         results = add_addresses_batch(sheet, addresses_with_notes)
                         
                         if results['success']:
-                            st.success(f"✅ {len(results['success'])} adresses ajoutées !")
+                            st.success(f"✅ {len(results['success'])} adresse(s) ajoutée(s) !")
                             with st.expander("✅ Adresses ajoutées"):
                                 for addr, note in results['success']:
                                     st.write(f"• {addr}" + (f" 📝 _{note}_" if note else ""))
                         
                         if results['corrected']:
-                            st.warning(f"⚠️ {len(results['corrected'])} adresses corrigées")
+                            st.warning(f"⚠️ {len(results['corrected'])} adresse(s) corrigée(s)")
                             with st.expander("⚠️ Corrections appliquées"):
                                 for addr, note, msg in results['corrected']:
                                     st.write(f"• {addr}: {msg}")
                         
                         if results['failed']:
-                            st.error(f"❌ {len(results['failed'])} adresses échouées")
+                            st.error(f"❌ {len(results['failed'])} adresse(s) échouée(s)")
                             with st.expander("❌ Échecs"):
                                 for addr, note, reason in results['failed']:
                                     st.write(f"• {addr} - {reason}")
@@ -600,7 +566,7 @@ def main():
             display_df = display_df[['Adresse', 'Note', 'Latitude', 'Longitude']]
             
             st.dataframe(display_df, use_container_width=True, hide_index=False)
-            st.write(f"**Total : {len(df)} adresses**")
+            st.write(f"**Total : {len(df)} adresse(s)**")
             
             with st.expander("🗑️ Supprimer une adresse"):
                 selected_idx = st.selectbox(
@@ -631,7 +597,9 @@ def main():
             st.success(f"📍 {len(valid_coords)} adresses affichées sur {len(df)} totales")
             
             if len(valid_coords) < len(df):
-                st.warning(f"⚠️ {len(df) - len(valid_coords)} adresses hors France (coordonnées invalides)")
+                st.warning(f"⚠️ {len(df) - len(valid_coords)} adresse(s) hors France (coordonnées invalides)")
+            
+            st.info("💡 **Cliquer sur un marqueur** pour voir les détails et accéder à Street View. Les coordonnées sont automatiquement corrigées à l'affichage.")
             
             display_map(df)
             
