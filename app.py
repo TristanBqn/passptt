@@ -594,7 +594,7 @@ def main():
                 df['Longitude'].between(FRANCE_LON_MIN, FRANCE_LON_MAX)
             ]
             
-            st.success(f"📍 {len(valid_coords)} adresse(s) affichée(s) sur {len(df)} totale(s)")
+            st.success(f"📍 {len(valid_coords)} adresses affichées sur {len(df)} totales")
             
             if len(valid_coords) < len(df):
                 st.warning(f"⚠️ {len(df) - len(valid_coords)} adresse(s) hors France (coordonnées invalides)")
