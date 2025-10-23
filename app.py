@@ -151,12 +151,35 @@ def is_in_france(lat, lon):
             FRANCE_LON_MIN <= lon <= FRANCE_LON_MAX)
 
 def create_empty_france_map():
-    """Crée une carte vide centrée sur la France"""
-    return folium.Map(
+    """Crée une carte vide centrée sur la France avec contrôle de couches"""
+    # Créer la carte sans tuiles par défaut
+    m = folium.Map(
         location=FRANCE_CENTER,
         zoom_start=FRANCE_ZOOM,
-        tiles='OpenStreetMap'
+        tiles=None
     )
+    
+    # Ajouter la couche OpenStreetMap
+    folium.TileLayer(
+        'OpenStreetMap',
+        name='Vue Plan',
+        overlay=False,
+        control=True
+    ).add_to(m)
+    
+    # Ajouter la couche Satellite (Google Satellite)
+    folium.TileLayer(
+        tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+        attr='Google',
+        name='Vue Satellite',
+        overlay=False,
+        control=True
+    ).add_to(m)
+    
+    # Ajouter le contrôle de couches
+    folium.LayerControl(position='topright', collapsed=False).add_to(m)
+    
+    return m
 
 def create_marker(lat, lon, address, note=""):
     """Crée un marqueur Folium avec Street View"""
