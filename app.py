@@ -151,51 +151,34 @@ def is_in_france(lat, lon):
             FRANCE_LON_MIN <= lon <= FRANCE_LON_MAX)
 
 def create_empty_france_map():
-    """Crée une carte vide centrée sur la France"""
-    return folium.Map(
+    """Crée une carte vide centrée sur la France avec choix terrain/satellite"""
+    m = folium.Map(
         location=FRANCE_CENTER,
         zoom_start=FRANCE_ZOOM,
-        tiles='OpenStreetMap'
+        tiles=None  # Pas de tile par défaut
     )
-
-def create_marker(lat, lon, address, note=""):
-    """Crée un marqueur Folium avec Street View"""
-    street_view_url = f"https://www.google.com/maps?layer=c&cbll={lat},{lon}"
     
-    popup_html = f"""
-    <div style="font-family: Arial; min-width: 250px;">
-        <h4 style="margin-bottom: 10px; color: #2c3e50;">{address}</h4>
-    """
+    # Ajouter les différentes couches
+    folium.TileLayer(
+        tiles='OpenStreetMap',
+        name='Terrain',
+        overlay=False,
+        control=True,
+        show=True
+    ).add_to(m)
     
-    if note:
-        popup_html += f"""
-        <p style="margin: 5px 0; color: #7f8c8d;">
-            <b>📝 Note:</b> <i>{note}</i>
-        </p>
-        """
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Satellite',
+        overlay=False,
+        control=True
+    ).add_to(m)
     
-    popup_html += f"""
-        <p style="margin: 10px 0; font-size: 12px; color: #95a5a6;">
-            📍 Lat: {lat:.6f}, Lon: {lon:.6f}
-        </p>
-        <hr style="margin: 10px 0; border: none; border-top: 1px solid #ecf0f1;">
-        <a href="{street_view_url}" target="_blank" 
-           style="display: inline-block; padding: 8px 15px; background-color: #3498db; 
-                  color: white; text-decoration: none; border-radius: 5px; 
-                  text-align: center; font-weight: bold;">
-            🗺️ Voir dans Street View
-        </a>
-    </div>
-    """
+    # Ajouter le contrôleur de couches
+    folium.LayerControl().add_to(m)
     
-    tooltip_text = f"{address} ({note})" if note else address
-    
-    return folium.Marker(
-        location=[lat, lon],
-        popup=folium.Popup(popup_html, max_width=300),
-        tooltip=tooltip_text,
-        icon=folium.Icon(color='red', icon='home', prefix='fa')
-    )
+    return m
 
 # ============================================================================
 # CONNEXION ET GESTION GOOGLE SHEETS
