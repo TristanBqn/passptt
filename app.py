@@ -602,15 +602,6 @@ def main():
             
             display_map(df)
             
-            with st.expander("📊 Détails des adresses"):
-                display_df = df.copy()
-                display_df['Latitude'] = display_df['Latitude'].apply(lambda x: f"{x:.6f}")
-                display_df['Longitude'] = display_df['Longitude'].apply(lambda x: f"{x:.6f}")
-                display_df = display_df[['Adresse', 'Note', 'Latitude', 'Longitude']]
-                st.dataframe(display_df, use_container_width=True)
-        else:
-            st.info("📭 Aucune adresse à afficher. Ajoutez des adresses depuis la page 'Gestion des adresses'.")
-            display_map(pd.DataFrame(columns=['Adresse', 'Latitude', 'Longitude', 'Note']))
 
 if __name__ == "__main__":
     main()
