@@ -472,7 +472,7 @@ def display_map(df):
 # ============================================================================
 
 def main():
-    st.title("🏠 Gestion de mes pass PTT et codes")
+    st.title("🏠 Pass PTT et codes")
     st.caption("Propriété intellectuelle de Tristan BANNIER")
     
     sheet = connect_to_google_sheet()
@@ -509,7 +509,7 @@ def main():
             with st.form("add_addresses_batch_form", clear_on_submit=True):
                 st.subheader("📝 Ajouter plusieurs adresses")
                 
-                st.info("💡 Séparez les adresses par des virgules. Ajoutez des notes entre parenthèses.")
+                st.info("Les adresses sont à séparer par des virgules. Les notes sont entre parenthèses.")
                 st.caption("**Exemple :** Tour Eiffel (vue imprenable), Arc de Triomphe, Louvre (musée)")
                 
                 batch_input = st.text_area("Adresses", placeholder="Adresse 1 (note), Adresse 2...", height=150)
@@ -556,7 +556,7 @@ def main():
         
         st.divider()
         
-        st.subheader("📋 Liste des adresses")
+        st.subheader("Liste des adresses")
         df = get_all_addresses(sheet)
         
         if not df.empty:
