@@ -445,10 +445,10 @@ def delete_address(sheet, index):
 def display_map(df):
     """Affiche les adresses sur une carte"""
     if df.empty:
-        st.info("📭 Aucune adresse à afficher.")
-        m = create_empty_france_map()
-        st_folium(m, width=1400, height=600, returned_objects=[])
-        return
+    st.info("Aucune adresse à afficher.")
+    m = create_empty_france_map()  # Utilisera automatiquement le LayerControl
+    st_folium(m, width=1400, height=600, returned_objects=[])
+    return
     
     france_coords = df[
         df['Latitude'].between(FRANCE_LAT_MIN, FRANCE_LAT_MAX) &
