@@ -172,7 +172,6 @@ def create_empty_france_map():
     folium.LayerControl().add_to(m)
     
     return m
-    
     )
 
 def create_marker(lat, lon, address, note=""):
