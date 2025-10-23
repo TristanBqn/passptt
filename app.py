@@ -6,6 +6,7 @@ import folium
 from streamlit_folium import st_folium
 import requests
 import re
+from folium.plugins import LocateControl
 
 def check_password():
     """Retourne True si l'utilisateur a entré le bon mot de passe."""
@@ -150,51 +151,88 @@ def is_in_france(lat, lon):
     return (FRANCE_LAT_MIN <= lat <= FRANCE_LAT_MAX and 
             FRANCE_LON_MIN <= lon <= FRANCE_LON_MAX)
 
-def create_empty_france_map():
+def create_empty_france_map(enable_geolocation=False):
     """Crée une carte vide centrée sur la France"""
-    return folium.Map(
+    m = folium.Map(
         location=FRANCE_CENTER,
         zoom_start=FRANCE_ZOOM,
         tiles='OpenStreetMap'
     )
+    
+    # Ajouter le contrôle de géolocalisation si demandé
+    if enable_geolocation:
+        LocateControl(
+            auto_start=False,
+            position='topleft',
+            strings={
+                'title': 'Me localiser',
+                'popup': 'Vous êtes ici'
+            },
+            locateOptions={
+                'enableHighAccuracy': True,
+                'maxZoom': 16
+            }
+        ).add_to(m)
+    
+    return m
 
-def create_marker(lat, lon, address, note=""):
+def create_marker(lat, lon, address, note="", is_user_location=False):
     """Crée un marqueur Folium avec Street View"""
     street_view_url = f"https://www.google.com/maps?layer=c&cbll={lat},{lon}"
     
-    popup_html = f"""
-    <div style="font-family: Arial; min-width: 250px;">
-        <h4 style="margin-bottom: 10px; color: #2c3e50;">{address}</h4>
-    """
-    
-    if note:
-        popup_html += f"""
-        <p style="margin: 5px 0; color: #7f8c8d;">
-            <b>📝 Note:</b> <i>{note}</i>
-        </p>
+    if is_user_location:
+        popup_html = f"""
+        <div style="font-family: Arial; min-width: 250px;">
+            <h4 style="margin-bottom: 10px; color: #2ecc71;">📍 Votre position</h4>
+            <p style="margin: 10px 0; font-size: 12px; color: #95a5a6;">
+                🌍 Lat: {lat:.6f}, Lon: {lon:.6f}
+            </p>
+            <hr style="margin: 10px 0; border: none; border-top: 1px solid #ecf0f1;">
+            <a href="{street_view_url}" target="_blank" 
+               style="display: inline-block; padding: 8px 15px; background-color: #2ecc71; 
+                      color: white; text-decoration: none; border-radius: 5px; 
+                      text-align: center; font-weight: bold;">
+                🗺️ Voir dans Street View
+            </a>
+        </div>
         """
-    
-    popup_html += f"""
-        <p style="margin: 10px 0; font-size: 12px; color: #95a5a6;">
-            📍 Lat: {lat:.6f}, Lon: {lon:.6f}
-        </p>
-        <hr style="margin: 10px 0; border: none; border-top: 1px solid #ecf0f1;">
-        <a href="{street_view_url}" target="_blank" 
-           style="display: inline-block; padding: 8px 15px; background-color: #3498db; 
-                  color: white; text-decoration: none; border-radius: 5px; 
-                  text-align: center; font-weight: bold;">
-            🗺️ Voir dans Street View
-        </a>
-    </div>
-    """
-    
-    tooltip_text = f"{address} ({note})" if note else address
+        tooltip_text = "📍 Votre position"
+        icon = folium.Icon(color='green', icon='user', prefix='fa')
+    else:
+        popup_html = f"""
+        <div style="font-family: Arial; min-width: 250px;">
+            <h4 style="margin-bottom: 10px; color: #2c3e50;">{address}</h4>
+        """
+        
+        if note:
+            popup_html += f"""
+            <p style="margin: 5px 0; color: #7f8c8d;">
+                <b>📝 Note:</b> <i>{note}</i>
+            </p>
+            """
+        
+        popup_html += f"""
+            <p style="margin: 10px 0; font-size: 12px; color: #95a5a6;">
+                🌍 Lat: {lat:.6f}, Lon: {lon:.6f}
+            </p>
+            <hr style="margin: 10px 0; border: none; border-top: 1px solid #ecf0f1;">
+            <a href="{street_view_url}" target="_blank" 
+               style="display: inline-block; padding: 8px 15px; background-color: #3498db; 
+                      color: white; text-decoration: none; border-radius: 5px; 
+                      text-align: center; font-weight: bold;">
+                🗺️ Voir dans Street View
+            </a>
+        </div>
+        """
+        
+        tooltip_text = f"{address} ({note})" if note else address
+        icon = folium.Icon(color='red', icon='home', prefix='fa')
     
     return folium.Marker(
         location=[lat, lon],
         popup=folium.Popup(popup_html, max_width=300),
         tooltip=tooltip_text,
-        icon=folium.Icon(color='red', icon='home', prefix='fa')
+        icon=icon
     )
 
 # ============================================================================
@@ -399,7 +437,7 @@ def add_address(sheet, address, note=""):
                 st.success(f"✅ Adresse ajoutée : {address} (📝 {note})")
             else:
                 st.success(f"✅ Adresse ajoutée : {address}")
-            st.info(f"📍 Coordonnées: Lat {lat:.6f}, Lon {lon:.6f}")
+            st.info(f"🌍 Coordonnées: Lat {lat:.6f}, Lon {lon:.6f}")
             return True
         except Exception as e:
             st.error(f"❌ Erreur : {e}")
@@ -419,48 +457,66 @@ def delete_address(sheet, index):
 # VISUALISATION CARTE
 # ============================================================================
 
-def display_map(df):
-    """Affiche les adresses sur une carte"""
-    if df.empty:
-        st.info("📭 Aucune adresse à afficher.")
-        m = create_empty_france_map()
+def display_map(df, user_location=None):
+    """Affiche les adresses sur une carte avec option de géolocalisation"""
+    
+    # Initialiser la carte
+    if df.empty and user_location is None:
+        st.info("🔭 Aucune adresse à afficher.")
+        m = create_empty_france_map(enable_geolocation=True)
         st_folium(m, width=1400, height=600, returned_objects=[])
         return
     
     france_coords = df[
         df['Latitude'].between(FRANCE_LAT_MIN, FRANCE_LAT_MAX) &
         df['Longitude'].between(FRANCE_LON_MIN, FRANCE_LON_MAX)
-    ].copy()
+    ].copy() if not df.empty else pd.DataFrame()
     
-    if france_coords.empty:
-        st.warning("⚠️ Aucune coordonnée valide en France métropolitaine.")
-        st.info("💡 Les coordonnées sont automatiquement corrigées à l'affichage.")
+    # Déterminer le centre et le zoom de la carte
+    if user_location:
+        # Centrer sur la position de l'utilisateur
+        center_lat, center_lon = user_location
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=14, tiles='OpenStreetMap')
         
-        with st.expander("🔍 Diagnostic des coordonnées"):
-            diag_df = df[['Adresse', 'Latitude', 'Longitude', 'Note']].copy()
-            st.dataframe(diag_df, use_container_width=True)
-        
-        m = create_empty_france_map()
+        # Ajouter le marqueur de position utilisateur
+        create_marker(center_lat, center_lon, "", is_user_location=True).add_to(m)
+    elif len(france_coords) == 1:
+        row = france_coords.iloc[0]
+        center_lat, center_lon = float(row['Latitude']), float(row['Longitude'])
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=14, tiles='OpenStreetMap')
+    elif len(france_coords) > 1:
+        center_lat = france_coords['Latitude'].mean()
+        center_lon = france_coords['Longitude'].mean()
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=8, tiles='OpenStreetMap')
+    else:
+        m = create_empty_france_map(enable_geolocation=True)
+        if user_location:
+            center_lat, center_lon = user_location
+            create_marker(center_lat, center_lon, "", is_user_location=True).add_to(m)
         st_folium(m, width=1400, height=600, returned_objects=[])
         return
     
-    if len(france_coords) == 1:
-        row = france_coords.iloc[0]
-        lat, lon = float(row['Latitude']), float(row['Longitude'])
+    # Ajouter le contrôle de géolocalisation
+    LocateControl(
+        auto_start=False,
+        position='topleft',
+        strings={
+            'title': 'Me localiser',
+            'popup': 'Vous êtes ici'
+        },
+        locateOptions={
+            'enableHighAccuracy': True,
+            'maxZoom': 16
+        }
+    ).add_to(m)
+    
+    # Ajouter les marqueurs des adresses
+    for _, row in france_coords.iterrows():
         note = row.get('Note', '')
-        
-        m = folium.Map(location=[lat, lon], zoom_start=14, tiles='OpenStreetMap')
-        create_marker(lat, lon, row['Adresse'], note).add_to(m)
-    else:
-        center_lat = france_coords['Latitude'].mean()
-        center_lon = france_coords['Longitude'].mean()
-        
-        m = folium.Map(location=[center_lat, center_lon], zoom_start=8, tiles='OpenStreetMap')
-        
-        for _, row in france_coords.iterrows():
-            note = row.get('Note', '')
-            create_marker(float(row['Latitude']), float(row['Longitude']), row['Adresse'], note).add_to(m)
-        
+        create_marker(float(row['Latitude']), float(row['Longitude']), row['Adresse'], note).add_to(m)
+    
+    # Ajuster les bounds si nécessaire
+    if len(france_coords) > 1:
         sw = france_coords[['Latitude', 'Longitude']].min().values.tolist()
         ne = france_coords[['Latitude', 'Longitude']].max().values.tolist()
         m.fit_bounds([sw, ne], padding=[30, 30])
@@ -479,15 +535,15 @@ def main():
     if sheet is None:
         st.stop()
     
-    page = st.sidebar.radio("Navigation", ["📍 Gestion des adresses", "🗺️ Carte interactive"], index=0)
+    page = st.sidebar.radio("Navigation", ["📝 Gestion des adresses", "🗺️ Carte interactive"], index=0)
     
     if st.sidebar.button("🔄 Rafraîchir les données"):
         st.rerun()
     
-    if page == "📍 Gestion des adresses":
-        st.header("📍 Gestion des adresses")
+    if page == "📝 Gestion des adresses":
+        st.header("📝 Gestion des adresses")
         
-        input_mode = st.radio("Mode de saisie", ["➕ Adresse simple", "📝 Adresses multiples"], horizontal=True)
+        input_mode = st.radio("Mode de saisie", ["➕ Adresse simple", "📋 Adresses multiples"], horizontal=True)
         
         if input_mode == "➕ Adresse simple":
             with st.form("add_address_form", clear_on_submit=True):
@@ -507,7 +563,7 @@ def main():
                         st.rerun()
         else:
             with st.form("add_addresses_batch_form", clear_on_submit=True):
-                st.subheader("📝 Ajouter plusieurs adresses")
+                st.subheader("📋 Ajouter plusieurs adresses")
                 
                 st.info("💡 Séparez les adresses par des virgules. Ajoutez des notes entre parenthèses.")
                 st.caption("**Exemple :** Tour Eiffel (vue imprenable), Arc de Triomphe, Louvre (musée)")
@@ -580,13 +636,24 @@ def main():
                     if delete_address(sheet, selected_idx):
                         st.rerun()
         else:
-            st.info("📭 Aucune adresse enregistrée.")
+            st.info("🔭 Aucune adresse enregistrée.")
             st.markdown("**Exemples à essayer :**")
             st.code("Tour Eiffel (vue imprenable), Louvre (musée), Arc de Triomphe")
     
     elif page == "🗺️ Carte interactive":
         st.header("🗺️ Visualisation sur carte")
+        
+        # Option de géolocalisation
+        col1, col2 = st.columns([3, 1])
+        with col2:
+            show_location = st.checkbox("📍 Afficher ma position", value=False, 
+                                       help="Autorisez la géolocalisation dans votre navigateur")
+        
         df = get_all_addresses(sheet)
+        
+        user_location = None
+        if show_location:
+            st.info("💡 Cliquez sur le bouton 📍 en haut à gauche de la carte pour activer la géolocalisation.")
         
         if not df.empty:
             valid_coords = df[
@@ -594,14 +661,14 @@ def main():
                 df['Longitude'].between(FRANCE_LON_MIN, FRANCE_LON_MAX)
             ]
             
-            st.success(f"📍 {len(valid_coords)} adresses affichées sur {len(df)} totales")
+            st.success(f"🏠 {len(valid_coords)} adresses affichées sur {len(df)} totales")
             
             if len(valid_coords) < len(df):
                 st.warning(f"⚠️ {len(df) - len(valid_coords)} adresse(s) hors France (coordonnées invalides)")
             
-            st.info("💡 **Cliquer sur un marqueur** pour voir les détails et accéder à Street View. Les coordonnées sont automatiquement corrigées à l'affichage.")
+            st.info("💡 **Cliquer sur un marqueur** pour voir les détails et accéder à Street View. Utilisez le bouton 📍 pour voir votre position.")
             
-            display_map(df)
+            display_map(df, user_location)
             
             with st.expander("📊 Détails des adresses"):
                 display_df = df.copy()
@@ -610,8 +677,4 @@ def main():
                 display_df = display_df[['Adresse', 'Note', 'Latitude', 'Longitude']]
                 st.dataframe(display_df, use_container_width=True)
         else:
-            st.info("📭 Aucune adresse à afficher. Ajoutez des adresses depuis la page 'Gestion des adresses'.")
-            display_map(pd.DataFrame(columns=['Adresse', 'Latitude', 'Longitude', 'Note']))
-
-if __name__ == "__main__":
-    main()
+            st.info("🔭 Aucune adresse à afficher. Ajoutez des adresses depuis la page 'Gestion des a
