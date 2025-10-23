@@ -39,6 +39,7 @@ def check_password():
 # Vérifier l'authentification avant d'afficher l'application
 if not check_password():
     st.stop()
+
 # ============================================================================
 # CONSTANTES
 # ============================================================================
@@ -282,7 +283,7 @@ def get_all_addresses(sheet):
                 df = df.dropna(subset=['Latitude', 'Longitude'])
                 df['Note'] = df['Note'].fillna('')
                 
-                # NOUVEAU: Corriger automatiquement les longitudes parisiennes
+                # Corriger automatiquement les longitudes parisiennes
                 df['Longitude'] = df.apply(
                     lambda row: correct_paris_longitude(row['Latitude'], row['Longitude'], row['Adresse']),
                     axis=1
@@ -677,4 +678,8 @@ def main():
                 display_df = display_df[['Adresse', 'Note', 'Latitude', 'Longitude']]
                 st.dataframe(display_df, use_container_width=True)
         else:
-            st.info("🔭 Aucune adresse à afficher. Ajoutez des adresses depuis la page 'Gestion des a
+            st.info("🔭 Aucune adresse à afficher. Ajoutez des adresses depuis la page 'Gestion des adresses'.")
+            display_map(pd.DataFrame(columns=['Adresse', 'Latitude', 'Longitude', 'Note']), user_location)
+
+if __name__ == "__main__":
+    main()
