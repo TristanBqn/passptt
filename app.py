@@ -151,46 +151,12 @@ def is_in_france(lat, lon):
             FRANCE_LON_MIN <= lon <= FRANCE_LON_MAX)
 
 def create_empty_france_map():
-    """Crée une carte vide centrée sur la France avec des options de layers"""
-    # Créer la carte de base avec OpenStreetMap
-    m = folium.Map(
+    """Crée une carte vide centrée sur la France"""
+    return folium.Map(
         location=FRANCE_CENTER,
         zoom_start=FRANCE_ZOOM,
         tiles='OpenStreetMap'
     )
-    
-    # Ajouter une couche satellite Google
-    folium.TileLayer(
-        tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-        attr='Google',
-        name='Satellite',
-        overlay=False,
-        control=True
-    ).add_to(m)
-    
-    # Ajouter une couche satellite hybride (avec labels)
-    folium.TileLayer(
-        tiles='https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
-        attr='Google',
-        name='Satellite Hybride',
-        overlay=False,
-        control=True
-    ).add_to(m)
-    
-    # Ajouter une couche Esri Satellite (alternative)
-    folium.TileLayer(
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        attr='Esri',
-        name='Esri Satellite',
-        overlay=False,
-        control=True
-    ).add_to(m)
-    
-    # Ajouter le contrôle de couches pour activer/désactiver les layers
-    folium.LayerControl(collapsed=False).add_to(m)
-    
-    return m
-
 
 def create_marker(lat, lon, address, note=""):
     """Crée un marqueur Folium avec Street View"""
