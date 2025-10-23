@@ -435,10 +435,15 @@ def display_map(df):
         m = folium.Map(location=[lat, lon], zoom_start=14, tiles='OpenStreetMap')
         create_marker(lat, lon, row['Adresse'], note).add_to(m)
     else:
-        center_lat = france_coords['Latitude'].mean()
+               center_lat = france_coords['Latitude'].mean()
         center_lon = france_coords['Longitude'].mean()
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=8, tiles=None)
         
-        m = folium.Map(location=[center_lat, center_lon], zoom_start=8, tiles='OpenStreetMap')
+        # Ajouter les layers
+        folium.TileLayer('OpenStreetMap', name='Terrain', overlay=False, control=True, show=True).add_to(m)
+        folium.TileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr='Esri', name='Satellite', overlay=False, control=True).add_to(m)
+        folium.LayerControl().add_to(m)
+
         
         for _, row in france_coords.iterrows():
             note = row.get('Note', '')
