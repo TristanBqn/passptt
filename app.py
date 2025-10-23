@@ -151,27 +151,11 @@ def is_in_france(lat, lon):
             FRANCE_LON_MIN <= lon <= FRANCE_LON_MAX)
 
 def create_empty_france_map():
-    """Crée une carte vide centrée sur la France avec couches multiples"""
-    m = folium.Map(
+    """Crée une carte vide centrée sur la France"""
+    return folium.Map(
         location=FRANCE_CENTER,
         zoom_start=FRANCE_ZOOM,
-        tiles='OpenStreetMap',
-        attr='OpenStreetMap contributors'
-    )
-    
-    # Ajout de la couche satellite (Esri WorldImagery)
-    folium.TileLayer(
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        attr='Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-        name='Vue Satellite',
-        overlay=False,
-        control=True
-    ).add_to(m)
-    
-    # Activation du contrôle des couches pour basculer entre vues
-    folium.LayerControl().add_to(m)
-    
-    return m
+        tiles='OpenStreetMap'
     )
 
 def create_marker(lat, lon, address, note=""):
