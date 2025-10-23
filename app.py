@@ -151,37 +151,12 @@ def is_in_france(lat, lon):
             FRANCE_LON_MIN <= lon <= FRANCE_LON_MAX)
 
 def create_empty_france_map():
-    """Crée une carte vide centrée sur la France avec sélecteur de couches"""
-    # Créer la carte sans tile par défaut
-    m = folium.Map(
+    """Crée une carte vide centrée sur la France"""
+    return folium.Map(
         location=FRANCE_CENTER,
         zoom_start=FRANCE_ZOOM,
-        tiles=None
+        tiles='OpenStreetMap'
     )
-    
-    # Ajouter la couche OpenStreetMap
-    folium.TileLayer(
-        tiles='OpenStreetMap',
-        name='Plan',
-        overlay=False,
-        control=True,
-        show=True
-    ).add_to(m)
-    
-    # Ajouter la couche satellite (Esri World Imagery)
-    folium.TileLayer(
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        attr='Esri',
-        name='Satellite',
-        overlay=False,
-        control=True
-    ).add_to(m)
-    
-    # Ajouter le contrôle de couches
-    folium.LayerControl().add_to(m)
-    
-    return m
-
 
 def create_marker(lat, lon, address, note=""):
     """Crée un marqueur Folium avec Street View"""
@@ -480,23 +455,7 @@ def display_map(df):
         center_lat = france_coords['Latitude'].mean()
         center_lon = france_coords['Longitude'].mean()
         
-       # === Ajout multi-couches ===
-m = folium.Map(location=[center_lat, center_lon], zoom_start=8, tiles=None)
-
-# Couches disponibles
-folium.TileLayer('OpenStreetMap', name='Carte standard').add_to(m)
-folium.TileLayer('Stamen Terrain', name='Relief').add_to(m)
-folium.TileLayer('Stamen Toner', name='Noir & Blanc').add_to(m)
-folium.TileLayer(
-    tiles='https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
-    name='Humanitarian'
-).add_to(m)
-folium.TileLayer(
-    tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
-    attr='Google Satellite',
-    name='Vue satellite'
-).add_to(m)
-
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=8, tiles='OpenStreetMap')
         
         for _, row in france_coords.iterrows():
             note = row.get('Note', '')
@@ -505,8 +464,7 @@ folium.TileLayer(
         sw = france_coords[['Latitude', 'Longitude']].min().values.tolist()
         ne = france_coords[['Latitude', 'Longitude']].max().values.tolist()
         m.fit_bounds([sw, ne], padding=[30, 30])
-
-    folium.LayerControl().add_to(m)
+    
     st_folium(m, width=1400, height=600, returned_objects=[])
 
 # ============================================================================
