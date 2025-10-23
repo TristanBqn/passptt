@@ -456,16 +456,11 @@ def display_map(df):
     ].copy()
     
     if france_coords.empty:
-        st.warning("⚠️ Aucune coordonnée valide en France métropolitaine.")
-        st.info("💡 Les coordonnées sont automatiquement corrigées à l'affichage.")
-        
-        with st.expander("🔍 Diagnostic des coordonnées"):
-            diag_df = df[['Adresse', 'Latitude', 'Longitude', 'Note']].copy()
-            st.dataframe(diag_df, use_container_width=True)
-        
-        m = create_empty_france_map()
-        st_folium(m, width=1400, height=600, returned_objects=[])
-        return
+    st.warning("Aucune coordonnée valide en France métropolitaine.")
+    # ... diagnostic ...
+    m = create_empty_france_map()  # Utilisera automatiquement le LayerControl
+    st_folium(m, width=1400, height=600, returned_objects=[])
+    return
     
     if len(france_coords) == 1:
         row = france_coords.iloc[0]
