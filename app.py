@@ -151,12 +151,37 @@ def is_in_france(lat, lon):
             FRANCE_LON_MIN <= lon <= FRANCE_LON_MAX)
 
 def create_empty_france_map():
-    """Crée une carte vide centrée sur la France"""
-    return folium.Map(
+    """Crée une carte vide centrée sur la France avec sélecteur de couches"""
+    # Créer la carte sans tile par défaut
+    m = folium.Map(
         location=FRANCE_CENTER,
         zoom_start=FRANCE_ZOOM,
-        tiles='OpenStreetMap'
+        tiles=None
     )
+    
+    # Ajouter la couche OpenStreetMap
+    folium.TileLayer(
+        tiles='OpenStreetMap',
+        name='Plan',
+        overlay=False,
+        control=True,
+        show=True
+    ).add_to(m)
+    
+    # Ajouter la couche satellite (Esri World Imagery)
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Satellite',
+        overlay=False,
+        control=True
+    ).add_to(m)
+    
+    # Ajouter le contrôle de couches
+    folium.LayerControl().add_to(m)
+    
+    return m
+
 
 def create_marker(lat, lon, address, note=""):
     """Crée un marqueur Folium avec Street View"""
