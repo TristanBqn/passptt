@@ -150,13 +150,26 @@ def is_in_france(lat, lon):
     return (FRANCE_LAT_MIN <= lat <= FRANCE_LAT_MAX and 
             FRANCE_LON_MIN <= lon <= FRANCE_LON_MAX)
 
-def create_empty_france_map():
-    """Crée une carte vide centrée sur la France"""
-    return folium.Map(
+def create_empty_france_map(tile_layer='OpenStreetMap'):
+    """Crée une carte vide centrée sur la France avec choix de layer"""
+    m = folium.Map(
         location=FRANCE_CENTER,
         zoom_start=FRANCE_ZOOM,
-        tiles='OpenStreetMap'
+        tiles=tile_layer
     )
+    
+    # Ajouter le contrôle de couches
+    folium.TileLayer('OpenStreetMap', name='Standard').add_to(m)
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Satellite',
+        overlay=False,
+        control=True
+    ).add_to(m)
+    folium.LayerControl().add_to(m)
+    
+    return m
 
 def create_marker(lat, lon, address, note=""):
     """Crée un marqueur Folium avec Street View"""
@@ -419,11 +432,11 @@ def delete_address(sheet, index):
 # VISUALISATION CARTE
 # ============================================================================
 
-def display_map(df):
-    """Affiche les adresses sur une carte"""
+def display_map(df, tile_layer='OpenStreetMap'):
+    """Affiche les adresses sur une carte avec choix de layer"""
     if df.empty:
-        st.info("📭 Aucune adresse à afficher.")
-        m = create_empty_france_map()
+        st.info("🔭 Aucune adresse à afficher.")
+        m = create_empty_france_map(tile_layer)
         st_folium(m, width=1400, height=600, returned_objects=[])
         return
     
@@ -440,7 +453,7 @@ def display_map(df):
             diag_df = df[['Adresse', 'Latitude', 'Longitude', 'Note']].copy()
             st.dataframe(diag_df, use_container_width=True)
         
-        m = create_empty_france_map()
+        m = create_empty_france_map(tile_layer)
         st_folium(m, width=1400, height=600, returned_objects=[])
         return
     
@@ -449,13 +462,36 @@ def display_map(df):
         lat, lon = float(row['Latitude']), float(row['Longitude'])
         note = row.get('Note', '')
         
-        m = folium.Map(location=[lat, lon], zoom_start=14, tiles='OpenStreetMap')
+        m = folium.Map(location=[lat, lon], zoom_start=14, tiles=tile_layer)
+        
+        # Ajouter les différentes couches
+        folium.TileLayer('OpenStreetMap', name='Standard').add_to(m)
+        folium.TileLayer(
+            tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            attr='Esri',
+            name='Satellite',
+            overlay=False,
+            control=True
+        ).add_to(m)
+        folium.LayerControl().add_to(m)
+        
         create_marker(lat, lon, row['Adresse'], note).add_to(m)
     else:
         center_lat = france_coords['Latitude'].mean()
         center_lon = france_coords['Longitude'].mean()
         
-        m = folium.Map(location=[center_lat, center_lon], zoom_start=8, tiles='OpenStreetMap')
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=8, tiles=tile_layer)
+        
+        # Ajouter les différentes couches
+        folium.TileLayer('OpenStreetMap', name='Standard').add_to(m)
+        folium.TileLayer(
+            tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            attr='Esri',
+            name='Satellite',
+            overlay=False,
+            control=True
+        ).add_to(m)
+        folium.LayerControl().add_to(m)
         
         for _, row in france_coords.iterrows():
             note = row.get('Note', '')
@@ -472,22 +508,22 @@ def display_map(df):
 # ============================================================================
 
 def main():
-    st.title("🏠 Pass PTT et codes")
+    st.title("🏠 Gestion de mes pass PTT et codes")
     st.caption("Propriété intellectuelle de Tristan BANNIER")
     
     sheet = connect_to_google_sheet()
     if sheet is None:
         st.stop()
     
-    page = st.sidebar.radio("Navigation", ["📍 Gestion des adresses", "🗺️ Carte interactive"], index=0)
+    page = st.sidebar.radio("Navigation", ["📝 Gestion des adresses", "🗺️ Carte interactive"], index=0)
     
     if st.sidebar.button("🔄 Rafraîchir les données"):
         st.rerun()
     
-    if page == "📍 Gestion des adresses":
-        st.header("📍 Gestion des adresses")
+    if page == "📝 Gestion des adresses":
+        st.header("📝 Gestion des adresses")
         
-        input_mode = st.radio("Mode de saisie", ["➕ Adresse simple", "📝 Adresses multiples"], horizontal=True)
+        input_mode = st.radio("Mode de saisie", ["➕ Adresse simple", "📋 Adresses multiples"], horizontal=True)
         
         if input_mode == "➕ Adresse simple":
             with st.form("add_address_form", clear_on_submit=True):
@@ -507,9 +543,9 @@ def main():
                         st.rerun()
         else:
             with st.form("add_addresses_batch_form", clear_on_submit=True):
-                st.subheader("📝 Ajouter plusieurs adresses")
+                st.subheader("📋 Ajouter plusieurs adresses")
                 
-                st.info("Les adresses sont à séparer par des virgules. Les notes sont entre parenthèses.")
+                st.info("💡 Séparez les adresses par des virgules. Ajoutez des notes entre parenthèses.")
                 st.caption("**Exemple :** Tour Eiffel (vue imprenable), Arc de Triomphe, Louvre (musée)")
                 
                 batch_input = st.text_area("Adresses", placeholder="Adresse 1 (note), Adresse 2...", height=150)
@@ -556,7 +592,7 @@ def main():
         
         st.divider()
         
-        st.subheader("Liste des adresses")
+        st.subheader("📋 Liste des adresses")
         df = get_all_addresses(sheet)
         
         if not df.empty:
@@ -580,7 +616,7 @@ def main():
                     if delete_address(sheet, selected_idx):
                         st.rerun()
         else:
-            st.info("📭 Aucune adresse enregistrée.")
+            st.info("🔭 Aucune adresse enregistrée.")
             st.markdown("**Exemples à essayer :**")
             st.code("Tour Eiffel (vue imprenable), Louvre (musée), Arc de Triomphe")
     
@@ -599,9 +635,19 @@ def main():
             if len(valid_coords) < len(df):
                 st.warning(f"⚠️ {len(df) - len(valid_coords)} adresse(s) hors France (coordonnées invalides)")
             
+            st.info("💡 **Cliquer sur un marqueur** pour voir les détails et accéder à Street View. Utilisez le contrôle en haut à droite pour changer de vue (Standard/Satellite).")
             
             display_map(df)
             
+            with st.expander("📊 Détails des adresses"):
+                display_df = df.copy()
+                display_df['Latitude'] = display_df['Latitude'].apply(lambda x: f"{x:.6f}")
+                display_df['Longitude'] = display_df['Longitude'].apply(lambda x: f"{x:.6f}")
+                display_df = display_df[['Adresse', 'Note', 'Latitude', 'Longitude']]
+                st.dataframe(display_df, use_container_width=True)
+        else:
+            st.info("🔭 Aucune adresse à afficher. Ajoutez des adresses depuis la page 'Gestion des adresses'.")
+            display_map(pd.DataFrame(columns=['Adresse', 'Latitude', 'Longitude', 'Note']))
 
 if __name__ == "__main__":
     main()
