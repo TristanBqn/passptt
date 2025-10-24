@@ -155,20 +155,17 @@ def create_empty_france_map(tile_layer='OpenStreetMap'):
     m = folium.Map(
         location=FRANCE_CENTER,
         zoom_start=FRANCE_ZOOM,
-        tiles=tile_layer,
-        max_zoom=22,
-        min_zoom=2
+        tiles=tile_layer
     )
     
     # Ajouter le contrôle de couches
-    folium.TileLayer('OpenStreetMap', name='Standard', max_zoom=22).add_to(m)
+    folium.TileLayer('OpenStreetMap', name='Standard').add_to(m)
     folium.TileLayer(
         tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         attr='Esri',
         name='Satellite',
         overlay=False,
-        control=True,
-        max_zoom=22
+        control=True
     ).add_to(m)
     folium.LayerControl().add_to(m)
     
@@ -465,23 +462,16 @@ def display_map(df, tile_layer='OpenStreetMap'):
         lat, lon = float(row['Latitude']), float(row['Longitude'])
         note = row.get('Note', '')
         
-        m = folium.Map(
-            location=[lat, lon], 
-            zoom_start=14, 
-            tiles=tile_layer,
-            max_zoom=22,
-            min_zoom=2
-        )
+        m = folium.Map(location=[lat, lon], zoom_start=14, tiles=tile_layer)
         
         # Ajouter les différentes couches
-        folium.TileLayer('OpenStreetMap', name='Standard', max_zoom=22).add_to(m)
+        folium.TileLayer('OpenStreetMap', name='Standard').add_to(m)
         folium.TileLayer(
             tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             attr='Esri',
             name='Satellite',
             overlay=False,
-            control=True,
-            max_zoom=22
+            control=True
         ).add_to(m)
         folium.LayerControl().add_to(m)
         
@@ -490,23 +480,16 @@ def display_map(df, tile_layer='OpenStreetMap'):
         center_lat = france_coords['Latitude'].mean()
         center_lon = france_coords['Longitude'].mean()
         
-        m = folium.Map(
-            location=[center_lat, center_lon], 
-            zoom_start=8, 
-            tiles=tile_layer,
-            max_zoom=22,
-            min_zoom=2
-        )
+        m = folium.Map(location=[center_lat, center_lon], zoom_start=8, tiles=tile_layer)
         
         # Ajouter les différentes couches
-        folium.TileLayer('OpenStreetMap', name='Standard', max_zoom=22).add_to(m)
+        folium.TileLayer('OpenStreetMap', name='Standard').add_to(m)
         folium.TileLayer(
             tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             attr='Esri',
             name='Satellite',
             overlay=False,
-            control=True,
-            max_zoom=22
+            control=True
         ).add_to(m)
         folium.LayerControl().add_to(m)
         
